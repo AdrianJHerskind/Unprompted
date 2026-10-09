@@ -19,7 +19,7 @@ protocol LocalCharacterSource: AnyObject {
 enum CharacterLibrary {
     static var userFolder: URL {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("DesktopAssistant/Characters", isDirectory: true)
+            .appendingPathComponent("Unprompted/Characters", isDirectory: true)
     }
 
     static func loadAll() -> [CharacterPack] {

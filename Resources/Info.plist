@@ -3,13 +3,13 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleName</key>
-	<string>DesktopAssistant</string>
+	<string>Unprompted</string>
 	<key>CFBundleDisplayName</key>
-	<string>Desktop Assistant</string>
+	<string>Unprompted</string>
 	<key>CFBundleIdentifier</key>
-	<string>local.desktopassistant</string>
+	<string>io.github.adrianjherskind.unprompted</string>
 	<key>CFBundleExecutable</key>
-	<string>DesktopAssistant</string>
+	<string>Unprompted</string>
 	<key>CFBundleIconFile</key>
 	<string>AppIcon</string>
 	<key>CFBundlePackageType</key>

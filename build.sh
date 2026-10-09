@@ -1,5 +1,5 @@
 #!/bin/bash
-# Builds DesktopAssistant.app, installs it in /Applications and (re)starts it.
+# Builds Unprompted.app, installs it in /Applications and (re)starts it.
 #
 #   ./build.sh                 release build, install, restart
 #   ./build.sh debug           debug build, install, restart
@@ -18,9 +18,9 @@ for arg in "$@"; do
 done
 
 swift build -c "$CONFIG"
-BIN="$(swift build -c "$CONFIG" --show-bin-path)/DesktopAssistant"
+BIN="$(swift build -c "$CONFIG" --show-bin-path)/Unprompted"
 
-APP=build/DesktopAssistant.app
+APP=build/Unprompted.app
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/"
@@ -32,10 +32,10 @@ echo "Built $APP"
 
 if [ "$INSTALL" = 1 ]; then
     # Quit any running copy so the new one takes over.
-    if pkill -x DesktopAssistant; then sleep 0.5; fi
-    rm -rf /Applications/DesktopAssistant.app
+    if pkill -x Unprompted; then sleep 0.5; fi
+    rm -rf /Applications/Unprompted.app
     cp -R "$APP" /Applications/
-    touch /Applications/DesktopAssistant.app # nudge Finder to pick up icon changes
-    open /Applications/DesktopAssistant.app
-    echo "Installed and started /Applications/DesktopAssistant.app"
+    touch /Applications/Unprompted.app # nudge Finder to pick up icon changes
+    open /Applications/Unprompted.app
+    echo "Installed and started /Applications/Unprompted.app"
 fi

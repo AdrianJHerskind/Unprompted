@@ -2,12 +2,12 @@
 import PackageDescription
 
 let package = Package(
-    name: "DesktopAssistant",
+    name: "Unprompted",
     platforms: [.macOS(.v13)],
     targets: [
         .executableTarget(
-            name: "DesktopAssistant",
-            path: "Sources/DesktopAssistant"
+            name: "Unprompted",
+            path: "Sources/Unprompted"
         )
     ]
 )

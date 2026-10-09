@@ -9,7 +9,7 @@ final class WindowPresenter {
 
     func showSettings(characters: [CharacterPack]) {
         let options = characters.map { CharacterOption(id: $0.id, name: $0.name, movement: $0.movement) }
-        settingsWindow = present(settingsWindow, title: "Desktop Assistant Settings",
+        settingsWindow = present(settingsWindow, title: "Unprompted Settings",
                                  content: SettingsView(settings: .shared, characters: options))
     }
 

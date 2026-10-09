@@ -566,7 +566,7 @@ final class Creature {
         return "Standing around"
     }
 
-    /// Internal state for `DA_DEBUG=1` runs.
+    /// Internal state for `UNPROMPTED_DEBUG=1` runs.
     var debugSummary: String {
         String(format: "%@ | activity=%@ grounded=%d walkDir=%.0f speedMult=%.1f pos=(%.0f,%.0f) vel=(%.0f,%.0f) "
                + "behaviorIn=%.1f talking=%d sulking=%d happy=%d sleeping=%d hopping=%d thrown=%d movement=%@",

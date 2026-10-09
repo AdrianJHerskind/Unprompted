@@ -64,7 +64,7 @@ final class Assistant: NSObject {
     /// The settings that only matter when they change.
     private var applied: (annoyance: Annoyance, stickyNotes: Bool, useDockTrash: Bool)
     let ownPID = ProcessInfo.processInfo.processIdentifier
-    private static let debugLogging = ProcessInfo.processInfo.environment["DA_DEBUG"] != nil
+    private static let debugLogging = ProcessInfo.processInfo.environment["UNPROMPTED_DEBUG"] != nil
 
     init(packs: [CharacterPack]) {
         self.packs = packs

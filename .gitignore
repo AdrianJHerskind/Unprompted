@@ -2,7 +2,7 @@
 build/
 .DS_Store
 # Characters kept only on this Mac (see LocalCharacterSource in CharacterLibrary.swift)
-Sources/DesktopAssistant/Characters/Local/
+Sources/Unprompted/Characters/Local/
 
 # Claude Code local files
 .claude/scheduled_tasks.lock

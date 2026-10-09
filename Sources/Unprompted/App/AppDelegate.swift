@@ -11,7 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         item.button?.image = MenuBarIcon.image()
-        item.button?.toolTip = "Desktop Assistant"
+        item.button?.toolTip = "Unprompted"
         let menu = NSMenu()
         menu.autoenablesItems = false
         menu.delegate = self
