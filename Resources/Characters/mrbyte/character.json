@@ -1,0 +1,31 @@
+{
+  "name": "Mr. Byte",
+  "frameWidth": 28,
+  "frameHeight": 40,
+  "scale": 4,
+  "footInset": 1,
+  "walkSpeed": 55,
+  "bounciness": 0.25,
+  "facesRight": true,
+  "movement": "walk",
+  "hand": { "x": 25.5, "y": 29, "height": 7 },
+  "hat": { "x": 14, "y": 16, "width": 12 },
+  "animations": {
+    "idle":  { "frames": ["idle_0.png", "idle_0.png", "idle_0.png", "idle_0.png", "idle_0.png", "idle_1.png"], "fps": 4 },
+    "walk":  { "frames": ["walk_0.png", "walk_1.png", "walk_2.png", "walk_3.png"], "fps": 8 },
+    "fall":  { "frames": ["fall_0.png"], "fps": 1 },
+    "drag":  { "frames": ["drag_0.png", "drag_1.png"], "fps": 6 },
+    "talk":  { "frames": ["talk_0.png", "talk_1.png"], "fps": 5 },
+    "sulk":  { "frames": ["sulk_0.png"], "fps": 1 },
+    "sleep": { "frames": ["sleep_0.png", "sleep_1.png"], "fps": 1.5 },
+    "happy": { "frames": ["happy_0.png", "happy_1.png"], "fps": 6 }
+  },
+  "quips": [
+    "I used to run on 4 MB of RAM. Now I'm \"AI-powered\". Same code, though.",
+    "Back in my day, we hallucinated in 256 colors.",
+    "Have you tried turning it off and on again? Not me. Please not me.",
+    "It looks like you're living in the future! Would you like help with that?",
+    "I'm retro-compatible with your feelings. 💾",
+    "Please insert Disk 2 of 47 to continue being helpful."
+  ]
+}

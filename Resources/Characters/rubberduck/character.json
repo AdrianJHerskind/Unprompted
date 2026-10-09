@@ -1,0 +1,31 @@
+{
+  "name": "Rubber Duck",
+  "frameWidth": 28,
+  "frameHeight": 36,
+  "scale": 4,
+  "footInset": 1,
+  "walkSpeed": 60,
+  "bounciness": 0.55,
+  "facesRight": true,
+  "movement": "waddle",
+  "hand": { "x": 25, "y": 33, "height": 7 },
+  "hat": { "x": 18.5, "y": 13.5, "width": 10 },
+  "animations": {
+    "idle":  { "frames": ["idle_0.png", "idle_0.png", "idle_0.png", "idle_0.png", "idle_0.png", "idle_1.png"], "fps": 4 },
+    "walk":  { "frames": ["walk_0.png", "walk_1.png", "walk_2.png", "walk_3.png"], "fps": 8 },
+    "fall":  { "frames": ["fall_0.png"], "fps": 1 },
+    "drag":  { "frames": ["drag_0.png", "drag_1.png"], "fps": 8 },
+    "talk":  { "frames": ["talk_0.png", "talk_1.png"], "fps": 5 },
+    "sulk":  { "frames": ["sulk_0.png"], "fps": 1 },
+    "sleep": { "frames": ["sleep_0.png", "sleep_1.png"], "fps": 1.5 },
+    "happy": { "frames": ["happy_0.png", "happy_1.png"], "fps": 6 }
+  },
+  "quips": [
+    "Quack.",
+    "Quack. Have you tried explaining it to me line by line?",
+    "I've solved more bugs than most senior engineers. Just by sitting here.",
+    "Quack quack. (That means \"it's probably a missing semicolon\".)",
+    "Explain your problem to me. I won't understand it, but you will.",
+    "I'm rubber. Your bugs bounce off me and stick to you."
+  ]
+}

@@ -1,0 +1,9 @@
+.build/
+build/
+.DS_Store
+# Characters kept only on this Mac (see LocalCharacterSource in CharacterLibrary.swift)
+Sources/DesktopAssistant/Characters/Local/
+
+# Claude Code local files
+.claude/scheduled_tasks.lock
+.claude/settings.local.json
