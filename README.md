@@ -154,6 +154,10 @@ Everything is in `Sources/DesktopAssistant/`:
 
 Sprite characters live in `Resources/Characters/`, and the scripts that generate the icon and pixel art in `tools/`.
 
+## License
+
+Desktop Assistant is released under the [MIT License](LICENSE). By opening a pull request, you agree that your contribution is licensed under it too.
+
 ## Disclaimer
 
 Desktop Assistant is a parody. It isn't affiliated with Microsoft, Apple or any company whose products it jokes about. Clippy is a trademark of Microsoft.
