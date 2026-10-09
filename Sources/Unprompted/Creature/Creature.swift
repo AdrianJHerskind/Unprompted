@@ -365,8 +365,13 @@ final class Creature {
         if !isDying { layoutView(rotation: rotation, zoom: 1) }
         view.state = state
         view.facingRight = facingRight
-        // Sleeping barely moves, so it's drawn less often.
-        view.redrawInterval = state == .sleep ? 0.1 : 1.0 / 30
+        // Moving poses are drawn every frame, in step with the window's motion. Calm ones change
+        // slowly, so drawing them less often saves work without anyone noticing.
+        switch state {
+        case .sleep: view.redrawInterval = 0.1
+        case .idle, .sulk: view.redrawInterval = 1.0 / 30
+        default: view.redrawInterval = 0
+        }
         view.advance(by: dt)
         apply()
     }

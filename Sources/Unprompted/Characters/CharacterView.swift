@@ -18,9 +18,9 @@ class CharacterView: NSView {
     /// Something held next to the body, like a morning coffee.
     var prop: Prop? { didSet { needsDisplay = true } }
 
-    /// The animation is redrawn at most this often. The creature's window still moves every frame,
-    /// so 30 fps looks smooth while halving the drawing work; sleeping creatures use even less.
-    var redrawInterval: TimeInterval = 1.0 / 30
+    /// The animation is redrawn at most this often; 0 = every frame. Calm poses can use less to
+    /// save drawing work (see `Creature.tick`).
+    var redrawInterval: TimeInterval = 0
 
     /// Seconds since the view was created.
     private(set) var time: TimeInterval = 0
@@ -43,7 +43,9 @@ class CharacterView: NSView {
         time += dt
         stateTime += dt
         sinceRedraw += dt
-        if sinceRedraw >= redrawInterval {
+        // A few milliseconds of slack: frames don't arrive exactly on time, and without it a frame
+        // that's a hair early would push the redraw a whole frame later, making the motion uneven.
+        if sinceRedraw + 0.004 >= redrawInterval {
             sinceRedraw = 0
             needsDisplay = true
         }
