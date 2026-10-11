@@ -130,13 +130,7 @@ final class Assistant: NSObject {
         defer { updateFrameLoop() }
         effects.tick()
         guard !isHidden else { return }
-        // A creature asleep on the ground doesn't need to know where windows are (one it's lying
-        // on is tracked live), and quiet mode refreshes the list every couple of seconds anyway.
-        // Standing still on the floor, an older list does until it starts moving again.
-        let needingWindows = allCreatures.filter { !($0.isSleeping && $0.grounded) }
-        if !needingWindows.isEmpty {
-            world.refreshIfNeeded(now: now, relaxed: needingWindows.allSatisfy(\.isRestingOnFloor))
-        }
+        world.refreshIfNeeded(now: now, for: allCreatures)
         // Before moving anything: something released over the trash this frame still counts,
         // even if it lands right away.
         updateTrash(now: now)

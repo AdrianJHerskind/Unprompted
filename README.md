@@ -123,14 +123,50 @@ Contributions are welcome: new characters, quips, chat skills, rewrite styles, f
 - **Keep the privacy promise** above: no network requests, nothing read in the background, and no new permissions without discussing it in an issue first.
 - **Builds without warnings.** UI code runs on the main actor; the creature and its windows are only touched from there.
 - **Put code where it belongs** (see the code map below) and follow the style of the code around it. Comments explain *why*, and only where that's not obvious.
-- **Keep it light.** Characters update up to 60 times a second while they move. Build what moves from Core Animation layers (see `makeLayeredBody`, `SparkleBody` and `CookieBody`) and repaint only what changed. If `drawBody` has to draw, keep it simple, and use `bodyGlow` rather than `CGContext.setShadow`, which blurs on the CPU for every update.
+- **Keep it light.** It runs all day next to your real work, so it has to stay cheap. Check what your change costs before you open a pull request (see [Checking CPU use](#checking-cpu-use)).
 - **Only original art**, or art you have the rights to share. No trademarked logos or characters, please.
 - **Friendly humor.** It teases AI hype, productivity culture and itself; it's never mean about people.
+
+### Checking CPU use
+
+Unprompted runs all day next to your real work, so it costs only a few percent of one core, and should stay that way. If your change touches characters, animation, the creature or its windows, compare it with where you started before you open a pull request:
+
+```bash
+tools/cpu-benchmark.sh --compare main
+```
+
+This builds your checkout (uncommitted changes included) and the commit on `main` your work started from. It runs a real creature for every character, standing, walking, talking (with a speech bubble) and asleep, alternating between the two builds, and prints what each costs. Quit Unprompted first and leave the Mac alone while it runs, about 10 minutes; it keeps the display awake. Don't lock or cover the screen either: a creature nobody can see stops drawing, so those runs fail. Paste the table into your pull request. Characters your change adds show up as `new`.
+
+To look at one thing more closely, use something like `tools/cpu-benchmark.sh --compare main -c ghost -m walk -r 3`. Add `-a` to wear a hat and a coffee. `--help` lists all options. If your work is committed on `main` itself, compare with `origin/main` instead, or `upstream/main` in a fork.
+
+The table has four columns:
+
+- **App CPU**: the creature itself, in % of one core. On Apple silicon, macOS moves work between fast and efficient cores, so the same code can show twice the CPU from one run to the next.
+- **App instr. M/s**: the instructions the creature ran, in millions a second. They don't depend on which cores did the work, so compare builds by these first.
+- **WindowManager**: macOS's work for our windows. Activity Monitor doesn't count it as Unprompted's, but it's real: moving a window every frame costs about a third of a core here.
+- **WindowServer**: the window server's extra work. It moves around a lot, so only trust big differences there.
+
+WindowManager and WindowServer are shown above their idle level.
+
+The benchmark runs one creature with the app's frame-loop rates and window-list rules. It doesn't run the rest of the app: the chat box, effects, interns, reminders and the other timers. For changes there, profile the real app (see the last tip below).
+
+How to keep it light:
+
+- **Use layers.** Build characters from Core Animation layers and change their properties (transform, position, opacity) instead of drawing. The window server moves, turns and fades layers on the GPU. See `makeLayeredBody`, `SparkleBody` and `CookieBody`.
+- **Repaint only what changed.** A `PaintedLayer` should repaint only when what it shows has changed (see how `GooglyCharacterView` keys the eyes and mouth). Parts that rarely change can be pictures (`showPicture`).
+- **No blurs in drawing code.** `CGContext.setShadow` blurs on the CPU every time something is drawn, which was the biggest cost before. Use a layer shadow with a `shadowPath`, or `bodyGlow` for a drawn body.
+- **Don't move windows every frame.** The creature moves inside a stage window that only follows now and then. Bubbles are only placed again when what they point at moves.
+- **Calm poses can update less often** (`Creature.updateInterval(for:)`). Anything that moves updates every frame: motion has to stay smooth at 60 fps.
+- **Don't ask macOS the same thing every frame.** Use `World`'s cached screens, visible frames and window list (`World.refreshIfNeeded(now:for:)` decides how fresh it needs to be).
+- **Drawing text is expensive.** Draw it once into a picture where you can, as the Cookie Banner's card does.
+- **Stop work nobody can see.** The frame loop stops while the screens are off or locked, and slows to 10 Hz while the creature dozes. New timers should do the same.
+- **Profile to see where the time goes:** `/usr/bin/sample <pid> 10` (the `sample` on your PATH may be a Python package), or Instruments' Time Profiler.
 
 ### Pull requests
 
 - One topic per pull request, please.
 - Describe what you changed and how you tested it. There's no automated test suite yet, so say what you tried by hand (and on how many screens, if it's about movement).
+- If it touches characters, animation, the creature or its windows, include the output of `tools/cpu-benchmark.sh --compare main`.
 - For anything visible, a screenshot or short screen recording helps a lot.
 
 ### Reporting bugs
@@ -152,7 +188,7 @@ Everything is in `Sources/Unprompted/`:
 | `Views/` | The overlay windows, speech bubble, chat box, sticky notes, effects and trash can, and the SwiftUI Settings and Daily Report windows |
 | `Support/` | Small helpers: colors, screen geometry, shapes, layers and word matching |
 
-Sprite characters live in `Resources/Characters/`, and the scripts that generate the icon and pixel art in `tools/`.
+Sprite characters live in `Resources/Characters/`. `tools/` has the scripts that generate the icon and pixel art, and the CPU benchmark.
 
 ## License
 

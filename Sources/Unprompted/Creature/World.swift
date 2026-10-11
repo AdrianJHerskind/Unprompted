@@ -79,6 +79,16 @@ final class World {
         screens.firstIndex { $0 === screen }.map { visibleFrames[$0] } ?? screen.visibleFrame
     }
 
+    /// Keeps the window list as fresh as these creatures need it. One asleep on the ground needs
+    /// none (a window it's lying on is tracked live, and quiet mode refreshes the list every couple
+    /// of seconds anyway). While all of them stand still on a screen's floor, an older list does
+    /// until one moves again.
+    func refreshIfNeeded(now: TimeInterval, for creatures: [Creature]) {
+        let needing = creatures.filter { !($0.isSleeping && $0.grounded) }
+        guard !needing.isEmpty else { return }
+        refreshIfNeeded(now: now, relaxed: needing.allSatisfy(\.isRestingOnFloor))
+    }
+
     /// `relaxed`: nothing on the screen depends on windows right now, so the list may be older.
     func refreshIfNeeded(now: TimeInterval, relaxed: Bool = false) {
         guard now - lastRefresh >= (relaxed ? Self.relaxedRefreshInterval : Self.refreshInterval) else { return }
