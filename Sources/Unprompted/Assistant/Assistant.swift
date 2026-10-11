@@ -23,6 +23,7 @@ final class Assistant: NSObject {
     let reminders = ReminderScheduler()
     let rewriter = ClipboardRewriter()
     private let quietMonitor = QuietMonitor()
+    let audience = Audience()
     var lines = LinePicker()
     var mood = Mood.load()
     var interns: [Intern] = []
@@ -59,7 +60,9 @@ final class Assistant: NSObject {
     private var lastBatteryWarning = Date.distantPast
     private(set) var secondsElapsed = 0
     private var lastFrame = CACurrentMediaTime()
-    private var timers: [Timer] = []
+    /// Runs only while there's something to see, and slower while it dozes (see `updateFrameLoop`).
+    private var frameTimer: Timer?
+    private var frameInterval: TimeInterval = 0
     private var settingsObserver: AnyCancellable?
     /// The settings that only matter when they change.
     private var applied: (annoyance: Annoyance, stickyNotes: Bool, useDockTrash: Bool)
@@ -89,15 +92,18 @@ final class Assistant: NSObject {
         chat.onSubmit = { [weak self] in self?.answer($0) }
         notes.onCrumpled = { [weak self] in self?.noteInteraction() }
         reminders.onDue = { [weak self] in self?.deliverReminder($0) }
+        audience.onChange = { [weak self] in self?.audienceChanged() }
+        creature.onWake = { [weak self] in self?.updateFrameLoop() }
         NSWorkspace.shared.notificationCenter.addObserver(
             self, selector: #selector(appActivated(_:)),
             name: NSWorkspace.didActivateApplicationNotification, object: nil)
 
-        repeatEvery(1.0 / 60) { [weak self] in self?.frameTick() }
-        repeatEvery(1) { [weak self] in self?.secondTick() }
+        // Runs for as long as the app does (the run loop keeps it).
+        _ = Self.timer(every: 1) { [weak self] in self?.secondTick() }
 
         updateQuiet()
         updatePresence()
+        updateFrameLoop()
         dropIn()
         after(1.8) { [weak self] in
             guard let self else { return }
@@ -119,13 +125,18 @@ final class Assistant: NSObject {
 
     private func frameTick() {
         let now = CACurrentMediaTime()
-        let dt = min(now - lastFrame, 1.0 / 20)
+        let dt = min(now - lastFrame, max(1.0 / 20, frameInterval * 1.5))
         lastFrame = now
+        defer { updateFrameLoop() }
         effects.tick()
         guard !isHidden else { return }
         // A creature asleep on the ground doesn't need to know where windows are (one it's lying
         // on is tracked live), and quiet mode refreshes the list every couple of seconds anyway.
-        if !(creature.isSleeping && creature.grounded) || !interns.isEmpty { world.refreshIfNeeded(now: now) }
+        // Standing still on the floor, an older list does until it starts moving again.
+        let needingWindows = allCreatures.filter { !($0.isSleeping && $0.grounded) }
+        if !needingWindows.isEmpty {
+            world.refreshIfNeeded(now: now, relaxed: needingWindows.allSatisfy(\.isRestingOnFloor))
+        }
         // Before moving anything: something released over the trash this frame still counts,
         // even if it lands right away.
         updateTrash(now: now)
@@ -144,15 +155,19 @@ final class Assistant: NSObject {
 
     private func secondTick() {
         secondsElapsed += 1
+        defer { updateFrameLoop() } // it may have woken up
         if Self.debugLogging {
             print("[debug] t=\(secondsElapsed) \(creature.debugSummary)")
             fflush(stdout)
         }
         let idle = SystemInfo.secondsSinceAnyInput()
+        audience.recheck(idle: idle)
         stats.tick(idle: idle)
         if let until = snoozedUntil, Date() >= until { unsnooze(asked: false) }
-        if secondsElapsed % 2 == 0 { updateQuiet() }
+        if secondsElapsed % 2 == 0 && audience.isWatching { updateQuiet() }
         updatePresence()
+        // Effects that finished while the frame loop was stopped still need taking off the screen.
+        if frameTimer == nil { effects.tick() }
         guard !isHidden else { return }
         if secondsElapsed % 60 == 0 {
             mood.driftTowardNeutral()
@@ -160,9 +175,10 @@ final class Assistant: NSObject {
             applyTimeOfDay()
         }
 
-        // Fall asleep when you're away (sooner at night), wake up (loudly) when you're back.
+        // Fall asleep when you're away (sooner at night), wake up (loudly) when you're back, once
+        // the screens show it again.
         if creature.isSleeping {
-            if !creature.isNapping && idle < 1.5 {
+            if !creature.isNapping && idle < 1.5 && audience.isWatching {
                 creature.wake()
                 after(0.6) { [weak self] in
                     guard let self else { return }
@@ -177,6 +193,8 @@ final class Assistant: NSObject {
             creature.sleep(for: nil)
             return
         }
+        // Nobody can see it: nothing new (remarks, notes, interns) until somebody can.
+        guard audience.isWatching else { return }
 
         // "Helpfully" interrupt long typing sessions (typing to *me* doesn't count).
         typingStreak = SystemInfo.secondsSinceKeyPress() < 1.5 && !chat.isOpen ? typingStreak + 1 : 0
@@ -208,7 +226,8 @@ final class Assistant: NSObject {
     // MARK: - Presence
 
     private func updateQuiet() {
-        world.refreshIfNeeded(now: CACurrentMediaTime()) // its window list shows full-screen apps
+        // Its window list shows full-screen apps; checked every 2 s, so a second-old list will do.
+        world.refreshIfNeeded(now: CACurrentMediaTime(), relaxed: true)
         let next = quietMonitor.evaluate(settings: settings, world: world)
         guard next != quiet else { return }
         let wasHiding = quiet?.hidden == true
@@ -240,6 +259,35 @@ final class Assistant: NSObject {
         for c in allCreatures { c.isHidden = hide }
         notes.setVisible(!hide)
         if !hide && creature.isDead { resurrect() }
+        updateFrameLoop()
+    }
+
+    private func audienceChanged() {
+        // Frozen in mid-air while nobody could see it, it may still be on its way down from
+        // dropping in: not your fault.
+        if audience.isWatching { landingGraceUntil = max(landingGraceUntil, Date() + 4) }
+        updateFrameLoop()
+    }
+
+    /// The 60 Hz frame loop only runs while there's something to see: not while it's hidden, and
+    /// not while nobody can see the screens. Effects animate on their own in the meantime. Dozing
+    /// on the floor needs only as many frames as its sleeping pose is updated at.
+    private func updateFrameLoop() {
+        let interval: TimeInterval
+        if !audience.isWatching || isHidden {
+            interval = 0
+        } else if creature.isDozing && interns.isEmpty && !bubble.isShowing && !chat.isOpen {
+            interval = Creature.sleepUpdateInterval
+        } else {
+            interval = 1.0 / 60
+        }
+        guard interval != frameInterval else { return }
+        // The clock restarts too, so a creature woken from a doze and sent off moving doesn't jump
+        // ahead by most of a slow frame.
+        lastFrame = CACurrentMediaTime()
+        frameInterval = interval
+        frameTimer?.invalidate()
+        frameTimer = interval > 0 ? Self.timer(every: interval) { [weak self] in self?.frameTick() } : nil
     }
 
     /// You asked for it (menu, chat, reminder): it stays on the screen for a minute even if quiet
@@ -330,13 +378,15 @@ final class Assistant: NSObject {
 
     // MARK: - Timers
 
-    private func repeatEvery(_ interval: TimeInterval, _ block: @escaping @MainActor () -> Void) {
+    private static func timer(every interval: TimeInterval, _ block: @escaping @MainActor () -> Void) -> Timer {
         let timer = Timer(timeInterval: interval, repeats: true) { _ in
             MainActor.assumeIsolated { block() }
         }
+        // Slow ones may come a little late, so macOS can bundle them with other wakeups.
+        if interval > 1.0 / 30 { timer.tolerance = interval * 0.1 }
         // .common keeps the creature animating while menus are open.
         RunLoop.main.add(timer, forMode: .common)
-        timers.append(timer)
+        return timer
     }
 
     func after(_ seconds: TimeInterval, _ block: @escaping @MainActor () -> Void) {

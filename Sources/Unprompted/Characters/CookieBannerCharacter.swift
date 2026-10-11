@@ -43,25 +43,31 @@ final class CookieBannerView: GooglyCharacterView {
     override var hatHeight: CGFloat { 0.7 }
     override var propAnchor: CGPoint { CGPoint(x: 1.22, y: -0.55) }
 
-    override func twinkleColor(alpha: CGFloat) -> CGColor {
-        CGColor(srgbRed: 0.79, green: 0.55, blue: 0.29, alpha: alpha * 0.7) // crumbs
+    override var twinkleColor: CGColor { CGColor(srgbRed: 0.79, green: 0.55, blue: 0.29, alpha: 0.7) } // crumbs
+
+    override func makeLayeredBody(R: CGFloat, scale: CGFloat) -> LayeredBody? {
+        CookieBody(view: self, R: R, scale: scale)
     }
 
-    override func drawBody(_ ctx: CGContext, R: CGFloat, palette: Palette, t: CGFloat) {
-        let card = CGRect(x: -R * 1.15, y: -R * 0.72, width: R * 2.3, height: R * 1.44)
-        let sulky = state == .sulk
+    fileprivate static func cardRect(R: CGFloat) -> CGRect {
+        CGRect(x: -R * 1.15, y: -R * 0.72, width: R * 2.3, height: R * 1.44)
+    }
+
+    fileprivate static func cardPath(R: CGFloat) -> CGPath {
+        CGPath(roundedRect: cardRect(R: R), cornerWidth: R * 0.14, cornerHeight: R * 0.14, transform: nil)
+    }
+
+    /// The card as it looks while idle, sulking or happy (its shadow is a layer's).
+    fileprivate func drawCard(_ ctx: CGContext, R: CGFloat, look: CreatureState) {
+        let card = Self.cardRect(R: R)
+        let sulky = look == .sulk
         let paper = CGColor.hex(sulky ? 0xE6E6E6 : 0xFFFDF7)
 
-        drawLegs(ctx, R: R, hipY: card.minY + 2, t: t)
-
         // The card itself.
-        let cardPath = CGPath(roundedRect: card, cornerWidth: R * 0.14, cornerHeight: R * 0.14, transform: nil)
-        ctx.saveGState()
-        ctx.setShadow(offset: CGSize(width: 0, height: -2), blur: 6, color: .hex(0x000000, alpha: 0.25))
+        let cardPath = Self.cardPath(R: R)
         ctx.addPath(cardPath)
         ctx.setFillColor(paper)
         ctx.fillPath()
-        ctx.restoreGState()
         ctx.addPath(cardPath)
         ctx.setStrokeColor(.hex(0xCFC6B4))
         ctx.setLineWidth(1)
@@ -94,25 +100,29 @@ final class CookieBannerView: GooglyCharacterView {
         ctx.strokePath()
         text("Reject", centeredIn: reject, size: R * 0.15, weight: .medium, color: NSColor(white: 0.35, alpha: 1))
 
-        let acceptColor: UInt32 = sulky ? 0xA0A4AA : (state == .happy ? 0x22B573 : 0x2F7BF6)
+        let acceptColor: UInt32 = sulky ? 0xA0A4AA : (look == .happy ? 0x22B573 : 0x2F7BF6)
         ctx.addPath(CGPath(roundedRect: accept, cornerWidth: buttonH / 2, cornerHeight: buttonH / 2, transform: nil))
         ctx.setFillColor(.hex(acceptColor))
         ctx.fillPath()
-        text(state == .happy ? "Accepted! ✓" : "Accept all", centeredIn: accept, size: R * 0.15, weight: .semibold, color: .white)
+        text(look == .happy ? "Accepted! ✓" : "Accept all", centeredIn: accept, size: R * 0.15, weight: .semibold, color: .white)
+    }
+
+    /// How far the left (0) or right (1) foot is swung sideways.
+    fileprivate func legSwing(_ i: Int, R: CGFloat, t: CGFloat) -> CGFloat {
+        switch state {
+        case .walk: return sin(t * 16 + CGFloat(i) * .pi) * R * 0.18
+        case .fall, .drag: return (i == 0 ? -1 : 1) * R * 0.15 + sin(t * 20 + CGFloat(i)) * R * 0.08
+        case .happy: return sin(t * 12 + CGFloat(i) * .pi) * R * 0.1
+        default: return 0
+        }
     }
 
     /// Two little legs behind the card, with a light outline so they show on dark backgrounds.
-    private func drawLegs(_ ctx: CGContext, R: CGFloat, hipY: CGFloat, t: CGFloat) {
+    fileprivate func drawLegs(_ ctx: CGContext, R: CGFloat, swings: [CGFloat]) {
+        let hipY = Self.cardRect(R: R).minY + 2
         for (i, legX) in ([-0.42, 0.42] as [CGFloat]).enumerated() {
-            var swing: CGFloat = 0
-            switch state {
-            case .walk: swing = sin(t * 16 + CGFloat(i) * .pi) * R * 0.18
-            case .fall, .drag: swing = (i == 0 ? -1 : 1) * R * 0.15 + sin(t * 20 + CGFloat(i)) * R * 0.08
-            case .happy: swing = sin(t * 12 + CGFloat(i) * .pi) * R * 0.1
-            default: break
-            }
             let hip = CGPoint(x: legX * R, y: hipY)
-            let foot = CGPoint(x: legX * R + swing, y: -R + R * 0.07)
+            let foot = CGPoint(x: legX * R + swings[i], y: -R + R * 0.07)
             let shoe = CGRect(x: foot.x - R * 0.13, y: foot.y - R * 0.07, width: R * 0.26, height: R * 0.13)
             ctx.setLineCap(.round)
             ctx.setStrokeColor(.hex(0xFFFFFF, alpha: 0.85))
@@ -140,5 +150,59 @@ final class CookieBannerView: GooglyCharacterView {
         let attrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: size, weight: weight), .foregroundColor: color]
         let textSize = (s as NSString).size(withAttributes: attrs)
         (s as NSString).draw(at: CGPoint(x: rect.midX - textSize.width / 2, y: rect.midY - textSize.height / 2), withAttributes: attrs)
+    }
+}
+
+/// The banner as layers. The card (with its text and buttons) changes only with the mood, so it's
+/// a picture; the legs behind it are repainted only while they move.
+private final class CookieBody: LayeredBody {
+    let layer = CALayer()
+    private let legs = PaintedLayer()
+    private let card = CALayer()
+    private weak var view: CookieBannerView?
+    private let R: CGFloat
+    private let scale: CGFloat
+    private var shownCard: CreatureState?
+    private var shownLegs: [Int]?
+
+    init(view: CookieBannerView, R: CGFloat, scale: CGFloat) {
+        self.view = view
+        self.R = R
+        self.scale = scale
+        legs.contentsScale = scale
+        card.shadowColor = .black
+        card.shadowOpacity = 0.25
+        card.shadowRadius = 3
+        layer.addSublayer(legs)
+        layer.addSublayer(card)
+    }
+
+    func update(state: CreatureState, palette: GooglyCharacterView.Palette, t: CGFloat) {
+        guard let view else { return }
+        let R = R
+        let look: CreatureState = state == .sulk || state == .happy ? state : .idle
+        if look != shownCard {
+            shownCard = look
+            let area = CookieBannerView.cardRect(R: R).insetBy(dx: -1, dy: -1)
+            card.showPicture(of: area, scale: scale) { ctx in
+                view.drawCard(ctx, R: R, look: look)
+            }
+            var toCard = CGAffineTransform(translationX: -area.minX, y: -area.minY)
+            card.shadowPath = CookieBannerView.cardPath(R: R).copy(using: &toCard)
+        }
+        // The shadow falls down the screen however the card is turned (climbing, tumbling into the
+        // trash). A layer's shadow turns with it, so the offset is turned back.
+        if let root = view.layer {
+            let from = card.convert(CGPoint.zero, from: root), to = card.convert(CGPoint(x: 0, y: -2), from: root)
+            card.shadowOffset = CGSize(width: to.x - from.x, height: to.y - from.y)
+        }
+        let swings = [view.legSwing(0, R: R, t: t), view.legSwing(1, R: R, t: t)]
+        let legsKey = swings.map { Int(($0 * 20).rounded()) }
+        if legsKey != shownLegs {
+            shownLegs = legsKey
+            legs.repaint(CGRect(x: -R * 0.85, y: -R * 1.1, width: R * 1.7, height: R * 0.52)) { [weak view] ctx in
+                view?.drawLegs(ctx, R: R, swings: swings)
+            }
+        }
     }
 }

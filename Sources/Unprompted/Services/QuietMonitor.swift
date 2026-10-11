@@ -16,8 +16,25 @@ final class QuietMonitor {
         "com.skype.skype", "com.gotomeeting.GoToMeetingWinStore", "com.logmein.GoToMeeting",
     ]
 
-    private var inZoomMeeting = false
-    private var lastZoomCheck = Date.distantPast
+    /// Zoom runs a "CptHost" helper only while a meeting (or screen share) is active. Apps starting
+    /// and quitting are followed as it happens: asking every running app for its name takes 10-20 ms.
+    private var zoomMeetingHelpers: Set<pid_t> = []
+    private var appsObservation: NSKeyValueObservation?
+
+    init() {
+        appsObservation = NSWorkspace.shared.observe(\.runningApplications, options: [.initial, .old, .new]) { [weak self] _, change in
+            // The list only changes on the main thread.
+            MainActor.assumeIsolated { self?.runningAppsChanged(change) }
+        }
+    }
+
+    private func runningAppsChanged(_ change: NSKeyValueObservedChange<[NSRunningApplication]>) {
+        if change.kind == .setting { zoomMeetingHelpers.removeAll() }
+        for app in change.oldValue ?? [] { zoomMeetingHelpers.remove(app.processIdentifier) }
+        for app in change.newValue ?? [] where app.bundleIdentifier == "us.zoom.CptHost" || app.localizedName == "CptHost" {
+            zoomMeetingHelpers.insert(app.processIdentifier)
+        }
+    }
 
     func evaluate(settings: AppSettings, world: World) -> State? {
         if settings.quietMode != .off, let reason = callOrFullScreen(world: world) {
@@ -32,15 +49,7 @@ final class QuietMonitor {
     private func callOrFullScreen(world: World) -> String? {
         let frontmost = NSWorkspace.shared.frontmostApplication
         if let id = frontmost?.bundleIdentifier, Self.callApps.contains(id) { return "you're on a call" }
-        // Zoom runs a "CptHost" helper only while a meeting (or screen share) is active. Scanning
-        // every running app is relatively slow, so it's checked every few seconds.
-        if Date().timeIntervalSince(lastZoomCheck) > 5 {
-            lastZoomCheck = Date()
-            inZoomMeeting = NSWorkspace.shared.runningApplications.contains {
-                $0.bundleIdentifier == "us.zoom.CptHost" || $0.localizedName == "CptHost"
-            }
-        }
-        if inZoomMeeting { return "you're in a Zoom meeting" }
+        if !zoomMeetingHelpers.isEmpty { return "you're in a Zoom meeting" }
         if let pid = frontmost?.processIdentifier, pid != ProcessInfo.processInfo.processIdentifier,
            world.hasFullScreenWindow(ownedBy: Int(pid)) {
             return "something is full screen"

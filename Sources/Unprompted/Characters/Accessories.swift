@@ -38,6 +38,12 @@ enum Costume: String, CaseIterable {
         ctx.restoreGState()
     }
 
+    /// Everything `draw(in:anchor:width:)` paints falls inside this. Characters show a picture of
+    /// this area, so a taller or wider hat needs it to grow.
+    func area(anchor: CGPoint, width w: CGFloat) -> CGRect {
+        CGRect(x: anchor.x - w * 0.7, y: anchor.y - w * 0.1, width: w * 1.6, height: w * 1.25)
+    }
+
     private func drawSanta(_ ctx: CGContext, _ w: CGFloat) {
         let cone = CGMutablePath()
         cone.move(to: CGPoint(x: -w * 0.45, y: w * 0.12))
@@ -209,5 +215,10 @@ enum Prop {
             ctx.strokePath()
         }
         ctx.restoreGState()
+    }
+
+    /// Everything `draw(in:anchor:height:t:)` paints falls inside this, steam included (see `Costume.area`).
+    func area(anchor: CGPoint, height h: CGFloat) -> CGRect {
+        CGRect(x: anchor.x - h * 0.5, y: anchor.y - h * 0.1, width: h * 1.3, height: h * 1.8)
     }
 }

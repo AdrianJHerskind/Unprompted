@@ -141,41 +141,67 @@ final class SpritePack: CharacterPack {
     }
 }
 
+/// Shows the frames as layer contents, so the window server scales, turns and mirrors them on the
+/// GPU and nothing is redrawn until the animation moves on to the next frame.
 final class SpriteView: CharacterView {
     private let pack: SpritePack
+    /// The character's own drawing area (`pack.size`), spun and mirrored; shows the current frame.
+    private let sprite = CALayer()
+    private let costumeLayer = CALayer()
+    private let propLayer = PaintedLayer()
+    private var shownImage: CGImage?
+    private var shownCostume: Costume?
 
     init(pack: SpritePack) {
         self.pack = pack
         super.init(frame: NSRect(origin: .zero, size: pack.size))
+        // Pixel art stays crisp, enlarged or shrunk.
+        sprite.magnificationFilter = .nearest
+        sprite.minificationFilter = .nearest
+        contentLayer.addSublayer(sprite)
+        sprite.addSublayer(costumeLayer)
+        sprite.addSublayer(propLayer)
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
-    override func draw(_ dirtyRect: NSRect) {
-        guard let ctx = NSGraphicsContext.current?.cgContext else { return }
-        applyTurn(ctx)
+    override func remakePictures() {
+        propLayer.contentsScale = pictureScale
+        shownCostume = nil
+        costumeLayer.contents = nil
+    }
+
+    override func updateContent() {
         let anim = pack.animation(for: state)
         let index = Int(stateTime * anim.fps)
-        let frame = anim.loop ? index % anim.frames.count : min(index, anim.frames.count - 1)
+        let image = anim.frames[anim.loop ? index % anim.frames.count : min(index, anim.frames.count - 1)]
+        if image !== shownImage {
+            shownImage = image
+            sprite.contents = image
+        }
 
-        // Draw in the character's own coordinates (not `bounds`), so the creature can scale and spin us.
-        let content = NSRect(origin: .zero, size: pack.size)
-        ctx.interpolationQuality = .none // keep pixel art crisp
-        if spin != 0 {
-            ctx.translateBy(x: content.midX, y: content.midY)
-            ctx.rotate(by: spin)
-            ctx.translateBy(x: -content.midX, y: -content.midY)
+        // In the character's own coordinates (not `bounds`), so the creature can scale and spin us.
+        let content = CGRect(origin: .zero, size: pack.size)
+        sprite.bounds = content
+        sprite.position = CGPoint(x: content.midX, y: content.midY)
+        var transform = CGAffineTransform(rotationAngle: spin)
+        if facingRight != pack.facesRight { transform = transform.scaledBy(x: -1, y: 1) }
+        sprite.setAffineTransform(transform)
+
+        if costume != shownCostume {
+            shownCostume = costume
+            costumeLayer.contents = nil
+            if let costume, let hat = pack.hat {
+                costumeLayer.showPicture(of: costume.area(anchor: hat.anchor, width: hat.width), scale: pictureScale) { ctx in
+                    costume.draw(in: ctx, anchor: hat.anchor, width: hat.width)
+                }
+            }
         }
-        if facingRight != pack.facesRight {
-            ctx.translateBy(x: content.width, y: 0)
-            ctx.scaleBy(x: -1, y: 1)
-        }
-        ctx.draw(anim.frames[frame], in: content)
-        if let costume, let hat = pack.hat {
-            costume.draw(in: ctx, anchor: hat.anchor, width: hat.width)
-        }
+        propLayer.isHidden = prop == nil || pack.hand == nil
         if let prop, let hand = pack.hand {
-            prop.draw(in: ctx, anchor: hand.anchor, height: hand.height, t: CGFloat(time))
+            propLayer.repaint(prop.area(anchor: hand.anchor, height: hand.height)) { [time] ctx in
+                prop.draw(in: ctx, anchor: hand.anchor, height: hand.height, t: CGFloat(time))
+            }
         }
     }
 }

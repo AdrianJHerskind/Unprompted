@@ -262,12 +262,13 @@ extension Creature {
 
         if entering { return endActivity() }
         let screens = world.screens
+        let floorOf = { self.world.visibleFrame(of: $0).minY }
         guard let farEdge = dir < 0 ? screens.map(\.frame.maxX).max() : screens.map(\.frame.minX).min(),
               let target = screens.filter({ abs((dir < 0 ? $0.frame.maxX : $0.frame.minX) - farEdge) < 2 })
-                .min(by: { abs($0.visibleFrame.minY - floorY) < abs($1.visibleFrame.minY - floorY) }) else {
+                .min(by: { abs(floorOf($0) - floorY) < abs(floorOf($1) - floorY) }) else {
             return endActivity()
         }
-        let floor = target.visibleFrame.minY
+        let floor = floorOf(target)
         position = CGPoint(x: farEdge - dir * size.width * 0.7 - size.width / 2, y: floor - footInset + hoverOffset)
         activity = .wrap(entering: true, edgeX: farEdge, dir: dir, floorY: floor)
         onEvent?(.wrapped)

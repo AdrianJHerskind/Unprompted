@@ -26,6 +26,9 @@ final class SpeechBubble {
     private var now: TimeInterval = 0
     /// What's currently drawn, so the view is only updated when something changed.
     private var rendered: (thinking: Bool, dots: Int, revealed: Int)?
+    /// Where it was last placed. Placing it asks the screen for its visible frame, which is slow
+    /// enough to show up when done every frame for a creature standing still.
+    private var placedAt: CGRect?
 
     private static let thinkingLabels = [
         "Thinking", "Reasoning", "Consulting the vibes", "Hallucinating responsibly",
@@ -105,7 +108,7 @@ final class SpeechBubble {
             panel.alphaValue = alpha
         }
         render()
-        position(near: anchor)
+        if anchor != placedAt { position(near: anchor) }
     }
 
     private func present(fullText text: String, near anchor: CGRect) {
@@ -149,6 +152,7 @@ final class SpeechBubble {
     /// Above the anchor, or below it when there's no room under the menu bar.
     private func position(near anchor: CGRect) {
         guard let screen = NSScreen.nearest(to: CGPoint(x: anchor.midX, y: anchor.midY)) else { return }
+        placedAt = anchor
         let size = panel.frame.size
         var x = anchor.midX - size.width / 2
         x = min(max(x, screen.frame.minX + 4), screen.frame.maxX - size.width - 4)

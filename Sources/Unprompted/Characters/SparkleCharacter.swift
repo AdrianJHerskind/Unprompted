@@ -38,31 +38,76 @@ final class SparkleView: GooglyCharacterView {
         }
     }
 
-    override func drawBody(_ ctx: CGContext, R: CGFloat, palette: Palette, t: CGFloat) {
-        let body = Shapes.sparkle(radius: R, pinch: 0.28)
+    override func makeLayeredBody(R: CGFloat, scale: CGFloat) -> LayeredBody? {
+        SparkleBody(R: R, scale: scale)
+    }
+}
 
-        // Soft glow
-        ctx.saveGState()
-        ctx.setShadow(offset: .zero, blur: 12, color: palette.glow)
-        ctx.addPath(body)
-        ctx.setFillColor(palette.mid)
-        ctx.fillPath()
-        ctx.restoreGState()
+/// The star as layers: a soft glow, a shimmering gradient that slowly turns inside the star's
+/// outline, and a highlight with an outline on top. Only the gradient's direction changes from one
+/// update to the next, and the window server draws gradients on the GPU, so nothing is redrawn.
+private final class SparkleBody: LayeredBody {
+    let layer = CALayer()
+    private let glow = CALayer()
+    private let fill = CAGradientLayer()
+    private let shine = CALayer()
+    private let shape: CGPath
+    private let R: CGFloat
+    private let scale: CGFloat
+    private var shownGradient: CGGradient?
 
-        // Shimmering gradient fill, with a highlight on the top spike.
-        ctx.saveGState()
-        ctx.addPath(body)
-        ctx.clip()
+    init(R: CGFloat, scale: CGFloat) {
+        self.R = R
+        self.scale = scale
+        let shape = Shapes.sparkle(radius: R, pinch: 0.28)
+        self.shape = shape
+        let square = CGRect(x: -R, y: -R, width: 2 * R, height: 2 * R)
+
+        fill.bounds = square
+        fill.position = .zero
+        fill.locations = [0, 0.5, 1]
+        let outline = CALayer()
+        outline.showPicture(of: square, scale: scale) { ctx in
+            ctx.addPath(shape)
+            ctx.setFillColor(.black)
+            ctx.fillPath()
+        }
+        fill.mask = outline
+
+        shine.showPicture(of: square.insetBy(dx: -2, dy: -2), scale: scale) { ctx in
+            ctx.saveGState()
+            ctx.addPath(shape)
+            ctx.clip()
+            ctx.setFillColor(CGColor(gray: 1, alpha: 0.4))
+            ctx.fillEllipse(in: CGRect(x: -R * 0.16, y: R * 0.42, width: R * 0.1, height: R * 0.36))
+            ctx.restoreGState()
+            ctx.addPath(shape)
+            ctx.setStrokeColor(CGColor(gray: 1, alpha: 0.55))
+            ctx.setLineWidth(1.5)
+            ctx.strokePath()
+        }
+
+        layer.addSublayer(glow)
+        layer.addSublayer(fill)
+        layer.addSublayer(shine)
+    }
+
+    func update(state: CreatureState, palette: GooglyCharacterView.Palette, t: CGFloat) {
+        if palette.gradient !== shownGradient {
+            shownGradient = palette.gradient
+            fill.colors = palette.colors
+            // A soft glow doesn't need the extra pixels.
+            let area = CGRect(x: -R - 16, y: -R - 16, width: 2 * R + 32, height: 2 * R + 32)
+            glow.showPicture(of: area, scale: scale / 2) { [shape] ctx in
+                ctx.setShadow(offset: .zero, blur: 12, color: palette.glow)
+                ctx.addPath(shape)
+                ctx.setFillColor(palette.mid)
+                ctx.fillPath()
+            }
+        }
+        // The gradient runs across the star, from one edge of its circle to the other, slowly turning.
         let angle = t * 0.6
-        let start = CGPoint(x: cos(angle) * R, y: sin(angle) * R)
-        ctx.drawLinearGradient(palette.gradient, start: start, end: CGPoint(x: -start.x, y: -start.y), options: [])
-        ctx.setFillColor(CGColor(gray: 1, alpha: 0.4))
-        ctx.fillEllipse(in: CGRect(x: -R * 0.16, y: R * 0.42, width: R * 0.1, height: R * 0.36))
-        ctx.restoreGState()
-
-        ctx.addPath(body)
-        ctx.setStrokeColor(CGColor(gray: 1, alpha: 0.55))
-        ctx.setLineWidth(1.5)
-        ctx.strokePath()
+        fill.startPoint = CGPoint(x: 0.5 + cos(angle) / 2, y: 0.5 + sin(angle) / 2)
+        fill.endPoint = CGPoint(x: 0.5 - cos(angle) / 2, y: 0.5 - sin(angle) / 2)
     }
 }

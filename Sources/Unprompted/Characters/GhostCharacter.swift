@@ -45,8 +45,10 @@ final class GhostView: GooglyCharacterView {
     override var hatHeight: CGFloat { 0.8 }
     override var propAnchor: CGPoint { CGPoint(x: 0.92, y: -0.4) }
 
-    override func twinkleColor(alpha: CGFloat) -> CGColor {
-        CGColor(srgbRed: 0.75, green: 0.83, blue: 1, alpha: alpha * 0.8)
+    override var twinkleColor: CGColor { CGColor(srgbRed: 0.75, green: 0.83, blue: 1, alpha: 0.8) }
+
+    override func bodyGlow(for palette: Palette) -> Glow? {
+        Glow(color: palette.glow, radius: 5.5)
     }
 
     override func drawBody(_ ctx: CGContext, R: CGFloat, palette: Palette, t: CGFloat) {
@@ -82,24 +84,26 @@ final class GhostView: GooglyCharacterView {
         }
         body.closeSubpath()
 
-        ctx.saveGState()
-        ctx.setAlpha(0.9) // just a little see-through
-        ctx.setShadow(offset: .zero, blur: 12, color: palette.glow)
-        ctx.beginTransparencyLayer(auxiliaryInfo: nil)
-
-        ctx.setFillColor(palette.mid)
+        // Body and arms as one shape, so all of it is evenly see-through without a transparency
+        // layer. The arms wind the same way as the body; otherwise where they overlap would be a hole.
+        let shape = CGMutablePath()
+        shape.addPath(body)
         for side in [-1.0, 1.0] as [CGFloat] {
-            ctx.fillEllipse(in: CGRect(x: side * w - R * 0.16, y: -R * 0.2 + armLift, width: R * 0.32, height: R * 0.2))
+            let arm = CGRect(x: side * w - R * 0.16, y: -R * 0.2 + armLift, width: R * 0.32, height: R * 0.2)
+            let toArm = CGAffineTransform(translationX: arm.midX, y: arm.midY).scaledBy(x: arm.width / 2, y: arm.height / 2)
+            shape.move(to: CGPoint(x: -1, y: 0), transform: toArm)
+            shape.addArc(center: .zero, radius: 1, startAngle: .pi, endAngle: -.pi, clockwise: true, transform: toArm)
+            shape.closeSubpath()
         }
+
         ctx.saveGState()
-        ctx.addPath(body)
+        // Just a little see-through, so a little of the glow behind it shows through too.
+        ctx.setAlpha(0.9)
+        ctx.addPath(shape)
         ctx.clip()
         // Extend past both ends so the hem's lobes (below `hemY`) get filled too.
         ctx.drawLinearGradient(palette.gradient, start: CGPoint(x: 0, y: R), end: CGPoint(x: 0, y: hemY),
                                options: [.drawsBeforeStartLocation, .drawsAfterEndLocation])
-        ctx.restoreGState()
-
-        ctx.endTransparencyLayer()
         ctx.restoreGState()
 
         ctx.addPath(body)

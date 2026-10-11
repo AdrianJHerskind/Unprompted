@@ -114,7 +114,7 @@ extension Creature {
             guard f.minY <= feetY + size.height * 0.6, f.maxY > feetY + size.height * 1.3,
                   groundWindow?.id != w.id,
                   let screen = world.screen(at: CGPoint(x: f.midX, y: f.maxY - 1)),
-                  f.maxY < screen.visibleFrame.maxY - size.height * 0.5 else { continue }
+                  f.maxY < world.visibleFrame(of: screen).maxY - size.height * 0.5 else { continue }
             for leftEdge in [true, false] {
                 let wallX = leftEdge ? f.minX : f.maxX
                 let side: CGFloat = centerX < wallX ? 1 : -1
@@ -148,7 +148,7 @@ extension Creature {
             // Made it! Over the edge onto the window, which is to the right of its left edge (and
             // the other way round), whichever side of the edge it climbed.
             hopOver(edgeX: wallX, top: f.maxY, inward: leftEdge ? 1 : -1)
-        } else if let screen = world.screen(at: center), frame.maxY > screen.visibleFrame.maxY {
+        } else if let screen = world.screen(at: center), frame.maxY > world.visibleFrame(of: screen).maxY {
             letGo()
         }
     }
@@ -276,7 +276,7 @@ extension Creature {
         layoutView(rotation: t * 720, zoom: max(0.05, 1 - t))
         if t >= 1 {
             activity = .dead
-            updatePanelVisibility()
+            updateStageVisibility()
             onEvent?(.died)
         }
     }

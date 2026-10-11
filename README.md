@@ -103,7 +103,7 @@ Only `idle` is required. The other states are `walk`, `fall`, `drag`, `talk`, `s
 `movement` is `walk`, `waddle`, `hop`, `roll` or `float`, and `bounciness` goes from 0 (a sack of potatoes) to 0.9.
 Then choose **Reload Characters**. `Resources/Characters/mrbyte/` is a complete example.
 
-For a look drawn in code, implement `CharacterPack` and a `CharacterView` subclass and add it to `CharacterLibrary.loadAll()`. Subclass `GooglyCharacterView` instead to get the googly face, poses and extras of the built-in characters and only draw a body.
+For a look made in code, implement `CharacterPack` and a `CharacterView` subclass and add it to `CharacterLibrary.loadAll()`. The view builds the character from Core Animation layers in its `contentLayer` and brings them up to date in `updateContent()`, including `spin`, the hat and the prop (`turn` is taken care of). Subclass `GooglyCharacterView` instead to get the googly face, poses and extras of the built-in characters: it only needs a body, drawn in `drawBody` or built from layers in `makeLayeredBody`.
 
 To keep a code-drawn character only on your Mac, put it in `Sources/Unprompted/Characters/Local/`, which git ignores, and hand it over through a `LocalCharacters` class there (see `LocalCharacterSource` in `CharacterLibrary.swift`).
 
@@ -123,7 +123,7 @@ Contributions are welcome: new characters, quips, chat skills, rewrite styles, f
 - **Keep the privacy promise** above: no network requests, nothing read in the background, and no new permissions without discussing it in an issue first.
 - **Builds without warnings.** UI code runs on the main actor; the creature and its windows are only touched from there.
 - **Put code where it belongs** (see the code map below) and follow the style of the code around it. Comments explain *why*, and only where that's not obvious.
-- **Keep it light.** Characters redraw up to 30 times a second, so new drawing should stay simple and cheap. Glows and blurs are the expensive part, especially on Retina screens.
+- **Keep it light.** Characters update up to 60 times a second while they move. Build what moves from Core Animation layers (see `makeLayeredBody`, `SparkleBody` and `CookieBody`) and repaint only what changed. If `drawBody` has to draw, keep it simple, and use `bodyGlow` rather than `CGContext.setShadow`, which blurs on the CPU for every update.
 - **Only original art**, or art you have the rights to share. No trademarked logos or characters, please.
 - **Friendly humor.** It teases AI hype, productivity culture and itself; it's never mean about people.
 
@@ -145,12 +145,12 @@ Everything is in `Sources/Unprompted/`:
 |---|---|
 | `App/` | Entry point, app delegate and the menu bar icon |
 | `Assistant/` | The brain: when to talk and what to say. `Assistant.swift` has the update loops, presence (snoozing, quiet mode) and settings; the `Assistant+…` files have talking, reactions to events, actions, interns and the menus |
-| `Creature/` | The body: its window and frame update (`Creature.swift`), walking, falling and multiple screens (`+Movement`), climbing, hanging, peeking and the other activities (`+Activities`), petting, shaking and throwing (`Gestures.swift`), and `World.swift`: what it can stand on |
+| `Creature/` | The body: its window (a stage the character moves around in) and frame update (`Creature.swift`), walking, falling and multiple screens (`+Movement`), climbing, hanging, peeking and the other activities (`+Activities`), petting, shaking and throwing (`Gestures.swift`), and `World.swift`: what it can stand on |
 | `Characters/` | The looks: `CharacterPack` and `CharacterView`, the shared googly face (`GooglyCharacterView.swift`), the drawn characters, sprite characters, and hats and props (`Accessories.swift`) |
 | `Models/` | Settings, mood, daily stats and report insights, annoyance levels, and everything it says (`Quips.swift`) |
-| `Services/` | The chat brain and calculator, text rewrites, file summaries, reminders, the clipboard, quiet-mode detection, the Dock's Trash and system info |
+| `Services/` | The chat brain and calculator, text rewrites, file summaries, reminders, the clipboard, quiet-mode detection, whether anyone can see the screens, the Dock's Trash and system info |
 | `Views/` | The overlay windows, speech bubble, chat box, sticky notes, effects and trash can, and the SwiftUI Settings and Daily Report windows |
-| `Support/` | Small helpers: colors, screen geometry, shapes and word matching |
+| `Support/` | Small helpers: colors, screen geometry, shapes, layers and word matching |
 
 Sprite characters live in `Resources/Characters/`, and the scripts that generate the icon and pixel art in `tools/`.
 

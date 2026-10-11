@@ -53,6 +53,12 @@ final class Creature {
     static let gravity: CGFloat = 2200
     /// Upward speed of each little hop for hopping characters.
     static let hopSpeed: CGFloat = 340
+    /// How high floaters hover above what they "stand" on, on average, and how far they bob up and
+    /// down around that.
+    static let hoverHeight: CGFloat = 24
+    static let hoverBob: CGFloat = 6
+    /// How often a sleeping creature's pose is updated (see `updateInterval(for:)`).
+    static let sleepUpdateInterval: TimeInterval = 1.0 / 10
 
     private(set) var pack: CharacterPack
     /// 1 = normal size; the interns are smaller. Change with `setScale`.
@@ -60,6 +66,8 @@ final class Creature {
     /// Multiplies walking and climbing speed (the Speed setting).
     var speedFactor: CGFloat = 1
     var onEvent: ((CreatureEvent) -> Void)?
+    /// Called whenever it wakes up, whatever woke it (so a slowed-down frame loop can speed up).
+    var onWake: (() -> Void)?
     /// Set by the assistant while a speech bubble or the chat is up; the creature stands still.
     var isTalking = false
     /// 0…1, from the assistant's mood. Happier creatures play more.
@@ -71,13 +79,18 @@ final class Creature {
     var movement: MovementStyle { movementOverride ?? pack.movement }
     /// Set by the assistant to take the creature off the screen (snoozing, quiet mode) and back.
     /// It doesn't move while hidden, because the assistant stops calling `tick`.
-    var isHidden = false { didSet { updatePanelVisibility() } }
+    var isHidden = false { didSet { updateStageVisibility() } }
 
-    private let panel: OverlayPanel
+    /// The creature's window: a stage around it, larger than it (see `apply`).
+    private let stage: OverlayPanel
     private let host = CreatureHostView(frame: NSRect(x: 0, y: 0, width: 1, height: 1))
     private var view: CharacterView
     private var isRemoved = false
     private var lastApplied: CGPoint?
+    /// Where the character view sits inside the stage.
+    private var viewOrigin: CGPoint = .zero
+    /// The screen the stage was placed on, or nil when it needs to be placed again.
+    private var stageScreen: NSScreen?
     private var viewTransform: (rotation: CGFloat, zoom: CGFloat) = (0, 1)
     private var isPressed = false
     private var mouseDownPoint: CGPoint = .zero
@@ -88,7 +101,7 @@ final class Creature {
     // Simulation state, shared with the Creature+… extensions. From outside, use the methods.
     let world: World
     var activity = Activity.wander
-    /// The window's origin, in screen coordinates.
+    /// The origin of the creature's square (`frame`), in screen coordinates.
     var position: CGPoint = .zero
     var velocity: CGVector = .zero
     var grounded = false
@@ -105,7 +118,9 @@ final class Creature {
     var waddlePhase: CGFloat = 0
     var shake = ShakeDetector()
     /// nil = awake, .infinity = asleep until the assistant wakes it, otherwise a nap end time.
-    var sleepingUntil: TimeInterval?
+    var sleepingUntil: TimeInterval? {
+        didSet { if sleepingUntil == nil && oldValue != nil { onWake?() } }
+    }
     var sulkUntil: TimeInterval = 0
     var happyUntil: TimeInterval = 0
     /// Let go of (or flung off a window) by you and still in the air: only then can it land in the trash.
@@ -116,12 +131,12 @@ final class Creature {
         self.pack = pack
         self.world = world
         self.scale = scale
-        let size = Self.windowSize(for: pack, scale: scale)
-        panel = OverlayPanel(size: size)
+        let stageSize = Self.stageSize(for: Self.squareSize(for: pack, scale: scale))
+        stage = OverlayPanel(size: stageSize)
         view = pack.makeView()
-        host.frame = NSRect(origin: .zero, size: size)
+        host.frame = NSRect(origin: .zero, size: stageSize)
         host.addSubview(view)
-        panel.contentView = host
+        stage.contentView = host
         layoutView(rotation: 0, zoom: 1, force: true)
 
         host.onMouseDown = { [weak self] in self?.mouseDown($0) }
@@ -135,10 +150,18 @@ final class Creature {
     // MARK: - State
 
     var isSleeping: Bool { sleepingUntil != nil }
+    /// Asleep on a screen's floor, with the cursor nowhere near: nothing it does then needs 60
+    /// frames a second. (On a window it rides along when the window is dragged; floaters bob.)
+    /// "Nowhere near" is far enough that the cursor can't get to it between two of those slower
+    /// frames, so clicks on it land on it rather than going through to what's underneath.
+    var isDozing: Bool {
+        guard isSleeping, grounded, groundWindow == nil, movement != .float, !isPressed, !isDragging else { return false }
+        return !frame.insetBy(dx: -200, dy: -200).contains(NSEvent.mouseLocation)
+    }
     var isNapping: Bool { sleepingUntil.map { $0 != .infinity } ?? false }
     var isSulking: Bool { now < sulkUntil }
     var isHappy: Bool { now < happyUntil }
-    var isVisible: Bool { panel.isVisible }
+    var isVisible: Bool { stage.isVisible }
 
     var isDying: Bool {
         switch activity {
@@ -171,6 +194,15 @@ final class Creature {
     /// Free-falling or thrown (not climbing, hanging, dragged or dying).
     var isFlying: Bool { !grounded && !isDragging && !isAttached }
 
+    /// Standing still (or held still by talking, sulking...) on a screen's floor, just wandering: until
+    /// it moves again, nothing it does depends on where windows are. (Standing on a window does: one
+    /// dragged over its feet makes it fall.)
+    var isRestingOnFloor: Bool {
+        guard grounded, groundWindow == nil, walkDirection == 0 || !canWalk, !isDragging,
+              case .wander = activity else { return false }
+        return true
+    }
+
     /// Free to walk around: not asleep, sulking, celebrating or talking.
     var canWalk: Bool { sleepingUntil == nil && !isSulking && !isHappy && !isTalking }
     /// Climbing only pauses for sleep and talking; frozen sideways on a wall for a whole sulk
@@ -185,30 +217,49 @@ final class Creature {
 
     // MARK: - Geometry
 
-    /// The window is square (the character's larger side), so the character can turn sideways to climb.
-    var size: NSSize { Self.windowSize(for: pack, scale: scale) }
+    /// The creature is a square (the character's larger side), so the character can turn sideways to climb.
+    var size: NSSize { Self.squareSize(for: pack, scale: scale) }
     var frame: CGRect { CGRect(origin: position, size: size) }
     var center: CGPoint { CGPoint(x: frame.midX, y: frame.midY) }
     /// Top of its head (plus room for a hat), for speech bubbles and hearts.
     var headTop: CGPoint {
         CGPoint(x: frame.midX, y: frame.minY + (pack.headTop + (costume == nil ? 0 : 28)) * scale)
     }
-    /// The visible character, without the empty headroom above it.
+    /// The visible character, without the empty headroom above it, for placing speech bubbles and
+    /// the chat box. A hovering floater's covers all of its bob: following the bob would move their
+    /// windows several times a second.
     var bodyFrame: CGRect {
-        CGRect(x: frame.minX, y: frame.minY, width: frame.width, height: headTop.y - frame.minY + 10)
+        var body = CGRect(x: frame.minX, y: frame.minY, width: frame.width, height: headTop.y - frame.minY + 10)
+        if grounded && movement == .float {
+            // Snapped like the square (see `apply`): taking the bob back out leaves tiny rounding
+            // errors, which would count as moving and have the bubble placed again.
+            body.origin.y = Self.snap(body.minY - (hoverOffset - Self.hoverHeight) - Self.hoverBob)
+            body.size.height += 2 * Self.hoverBob
+        }
+        return body
     }
     var footInset: CGFloat { pack.footInset * scale }
     var walkSpeed: CGFloat { pack.walkSpeed * (scale < 0.8 ? 1.3 : 1) * speedFactor }
-    /// From the middle of the window to the feet when turned sideways: how far it stands from a wall
+    /// From the middle of the square to the feet when turned sideways: how far it stands from a wall
     /// while climbing.
     var feetReach: CGFloat { size.width / 2 - footInset }
     /// Distance from a wall while climbing: feet against it, or (floating) a body's width away.
     var climbOffset: CGFloat { movement == .float ? pack.size.width * scale * 0.4 : feetReach }
 
-    private static func windowSize(for pack: CharacterPack, scale: CGFloat) -> NSSize {
+    private static func squareSize(for pack: CharacterPack, scale: CGFloat) -> NSSize {
         let side = max(pack.size.width, pack.size.height) * scale
         return NSSize(width: side, height: side)
     }
+
+    /// The window: the creature's square with room for one more on every side (see `apply`), or
+    /// a little less for giant characters. In whole points, like where it's placed.
+    private static func stageSize(for square: NSSize) -> NSSize {
+        let margin = min(square.width, 300)
+        return NSSize(width: (square.width + margin * 2).rounded(.up), height: (square.height + margin * 2).rounded(.up))
+    }
+
+    /// In whole points, the way AppKit places windows: rounded down, with an eighth of slack.
+    private static func snap(_ v: CGFloat) -> CGFloat { (v + 0.125).rounded(.down) }
 
     // MARK: - Control
 
@@ -224,15 +275,15 @@ final class Creature {
         offscreenTime = 0
         sleepingUntil = nil
         layoutView(rotation: 0, zoom: 1)
-        panel.alphaValue = 1
+        stage.alphaValue = 1
         apply()
-        updatePanelVisibility()
+        updateStageVisibility()
     }
 
     /// Takes it off the screen for good (an intern that's leaving).
     func remove() {
         isRemoved = true
-        updatePanelVisibility()
+        updateStageVisibility()
     }
 
     func setPack(_ newPack: CharacterPack) {
@@ -242,8 +293,7 @@ final class Creature {
         view = newPack.makeView()
         view.costume = costume
         view.prop = prop
-        panel.setContentSize(size)
-        host.frame = NSRect(origin: .zero, size: size)
+        resizeStage()
         host.needsDisplay = true
         host.addSubview(view)
         layoutView(rotation: viewTransform.rotation, zoom: viewTransform.zoom, force: true)
@@ -257,8 +307,7 @@ final class Creature {
         guard abs(newScale - scale) > 0.001 else { return }
         let feet = CGPoint(x: frame.midX, y: position.y + footInset)
         scale = newScale
-        panel.setContentSize(size)
-        host.frame = NSRect(origin: .zero, size: size)
+        resizeStage()
         layoutView(rotation: viewTransform.rotation, zoom: viewTransform.zoom, force: true)
         position = CGPoint(x: feet.x - size.width / 2, y: feet.y - footInset)
         lastApplied = nil
@@ -330,7 +379,7 @@ final class Creature {
         now += dt
         // Floaters hover above whatever they "stand" on, bobbing gently. Standing creatures move
         // with the hover height, so their feet stay on the surface when it changes.
-        let hover: CGFloat = movement == .float ? 24 + 6 * sin(CGFloat(now) * 2.1) : 0
+        let hover: CGFloat = movement == .float ? Self.hoverHeight + Self.hoverBob * sin(CGFloat(now) * 2.1) : 0
         if grounded { position.y += hover - hoverOffset }
         hoverOffset = hover
         let xBefore = position.x
@@ -356,7 +405,8 @@ final class Creature {
             }
         }
         if grounded || isDragging || isAttached { isThrown = false }
-        updateGait(dt: CGFloat(dt), dx: position.x - xBefore)
+        let dx = position.x - xBefore
+        updateGait(dt: CGFloat(dt), dx: dx)
         shake.endFrame()
         if !isDying { detectPetting() }
         updateClickThrough()
@@ -365,13 +415,8 @@ final class Creature {
         if !isDying { layoutView(rotation: rotation, zoom: 1) }
         view.state = state
         view.facingRight = facingRight
-        // Moving poses are drawn every frame, in step with the window's motion. Calm ones change
-        // slowly, so drawing them less often saves work without anyone noticing.
-        switch state {
-        case .sleep: view.redrawInterval = 0.1
-        case .idle, .sulk: view.redrawInterval = 1.0 / 30
-        default: view.redrawInterval = 0
-        }
+        // Walking around the screens or back from a peek doesn't stop for talking or sulking.
+        view.updateInterval = dx == 0 ? updateInterval(for: state) : 0
         view.advance(by: dt)
         apply()
     }
@@ -403,26 +448,77 @@ final class Creature {
         return (walkDirection != 0 ? .walk : .idle, 0)
     }
 
-    /// Moves the window to `position`.
+    /// Calm poses change slowly, so updating them less often than every frame saves work without
+    /// anyone noticing: each update hands Core Animation new layer properties and repaints whatever
+    /// moved (a talking mouth, the Z's, a ghost's waving body). Talking counts as calm: it stands
+    /// still for it. Each is a whole number of 60 Hz frames, so updates stay evenly spaced.
+    private func updateInterval(for state: CreatureState) -> TimeInterval {
+        switch state {
+        // Fewer still once it's been asleep for a while: you've probably gone.
+        case .sleep: return view.stateTime > 300 ? 1.0 / 5 : Self.sleepUpdateInterval
+        case .sulk: return 1.0 / 15
+        case .idle, .talk: return 1.0 / 30
+        default: return 0
+        }
+    }
+
+    /// Moves the character to `position`.
+    ///
+    /// Moving a window every frame is expensive (AppKit, the window server and the window manager
+    /// all take part), so the window is a stage around the creature and only the character view
+    /// moves inside it. The stage follows when the creature reaches its edge or another screen;
+    /// the window and the view then change in the same frame.
     func apply() {
         guard position != lastApplied else { return }
         lastApplied = position
-        panel.setFrameOrigin(position)
+        let square = CGRect(origin: CGPoint(x: Self.snap(position.x), y: Self.snap(position.y)), size: size)
+        let screen = world.screen(at: CGPoint(x: square.midX, y: square.midY))
+        if stageScreen == nil || !stage.frame.contains(square) || (screen != nil && screen !== stageScreen) {
+            placeStage(around: square, on: screen ?? NSScreen.nearest(to: CGPoint(x: square.midX, y: square.midY)))
+        }
+        let origin = CGPoint(x: square.minX - stage.frame.minX, y: square.minY - stage.frame.minY)
+        guard origin != viewOrigin else { return }
+        viewOrigin = origin
+        view.setFrameOrigin(origin)
     }
 
-    /// Rotates and zooms the character inside its window (for climbing, shrinking and dying).
+    /// Centers the stage on the creature, but keeps it on the creature's screen give or take a
+    /// creature: with "Displays have separate Spaces" (the default), a window only shows on the
+    /// screen that has most of it.
+    private func placeStage(around square: CGRect, on screen: NSScreen?) {
+        let stageSize = Self.stageSize(for: size)
+        var origin = CGPoint(x: square.midX - stageSize.width / 2, y: square.midY - stageSize.height / 2)
+        if let screen {
+            // Whole points, so the stage still holds the square after rounding.
+            let bounds = screen.frame.insetBy(dx: -size.width, dy: -size.height).union(square).integral
+            origin.x = max(min(origin.x, bounds.maxX - stageSize.width), bounds.minX)
+            origin.y = max(min(origin.y, bounds.maxY - stageSize.height), bounds.minY)
+        }
+        stageScreen = screen
+        stage.setFrameOrigin(CGPoint(x: origin.x.rounded(.down), y: origin.y.rounded(.down)))
+    }
+
+    /// After a size change: a stage to match, placed around the creature again by `apply`.
+    private func resizeStage() {
+        let stageSize = Self.stageSize(for: size)
+        stage.setContentSize(stageSize)
+        host.frame = NSRect(origin: .zero, size: stageSize)
+        stageScreen = nil
+    }
+
+    /// Rotates and zooms the character inside its square (for climbing, shrinking and dying).
     func layoutView(rotation: CGFloat, zoom: CGFloat, force: Bool = false) {
         guard force || viewTransform.rotation != rotation || viewTransform.zoom != zoom else { return }
         viewTransform = (rotation, zoom)
-        // The view fills the square window. Its bounds show the pack's drawing area, bottom-aligned
+        // The view fills the creature's square. Its bounds show the pack's drawing area, bottom-aligned
         // and centered, in a square the size of the pack's larger side (divided by `zoom` to shrink).
         let side = max(pack.size.width, pack.size.height)
         let b = side / zoom
-        view.frame = NSRect(origin: .zero, size: size)
+        view.frame = NSRect(origin: viewOrigin, size: size)
         view.bounds = NSRect(x: pack.size.width / 2 - b / 2, y: side / 2 - b / 2, width: b, height: b)
         // Changing the bounds scale can shift the frame in AppKit, so put it back where it belongs.
-        view.setFrameOrigin(.zero)
-        // Rotation is drawn by the view itself, around the middle of the window.
+        view.setFrameOrigin(viewOrigin)
+        // The view turns itself, around the middle of the square.
         view.turn = rotation
     }
 
@@ -432,10 +528,10 @@ final class Creature {
     }
 
     /// Hides the window once it's dead (after the trash animation) or removed.
-    func updatePanelVisibility() {
+    func updateStageVisibility() {
         let visible = !isHidden && !isRemoved && !isDead
-        guard visible != panel.isVisible else { return }
-        if visible { panel.orderFrontRegardless() } else { panel.orderOut(nil) }
+        guard visible != stage.isVisible else { return }
+        if visible { stage.orderFrontRegardless() } else { stage.orderOut(nil) }
     }
 
     // MARK: - Mouse
@@ -448,19 +544,18 @@ final class Creature {
         let radius = min(pack.size.width, pack.headTop) * scale * 0.42
         let inside = hypot(m.x - c.x, m.y - c.y) <= radius
         let ignore = !(inside || isPressed || isDragging) || isDying
-        if panel.ignoresMouseEvents != ignore { panel.ignoresMouseEvents = ignore }
+        if stage.ignoresMouseEvents != ignore { stage.ignoresMouseEvents = ignore }
     }
 
     /// The middle of the visible character, accounting for headroom and the sideways climbing pose.
     private var bodyCenter: CGPoint {
-        let windowCenter = center
-        let offset = (frame.minY + (pack.headTop * scale) / 2) - windowCenter.y // below center when upright
+        let offset = (frame.minY + (pack.headTop * scale) / 2) - center.y // below center when upright
         let angle = viewTransform.rotation * .pi / 180
-        return CGPoint(x: windowCenter.x - sin(angle) * offset, y: windowCenter.y + cos(angle) * offset)
+        return CGPoint(x: center.x - sin(angle) * offset, y: center.y + cos(angle) * offset)
     }
 
     private func detectPetting() {
-        guard !isDragging, !isPressed, panel.isVisible else { return }
+        guard !isDragging, !isPressed, stage.isVisible else { return }
         let area = frame.insetBy(dx: size.width * 0.15, dy: size.height * 0.15)
         if pet.update(mouse: NSEvent.mouseLocation, over: area, now: now) {
             beHappy(for: 2)

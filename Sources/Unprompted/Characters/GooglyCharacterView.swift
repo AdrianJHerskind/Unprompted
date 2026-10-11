@@ -1,11 +1,28 @@
 import AppKit
 
+/// A body made of Core Animation layers, which the window server animates on the GPU without
+/// anything being redrawn. Its layer's origin is the middle of the body; the view poses it.
+@MainActor
+protocol LayeredBody: AnyObject {
+    var layer: CALayer { get }
+    /// Called for every update of the view with what the creature is doing, the colors for its
+    /// mood and the view's clock.
+    func update(state: CreatureState, palette: GooglyCharacterView.Palette, t: CGFloat)
+}
+
 /// The shared look of the code-drawn characters (Sparkle, Ghost, Cookie Banner):
 /// googly eyes that follow the cursor, a mouth and blush for every mood, poses (hop, squash,
 /// lean), twinkles, sleepy Z's, hats and props. Subclasses draw their own body in `drawBody`
-/// and can change colors and where the hat and props go.
+/// (or build it from layers in `makeLayeredBody`) and can change colors and where the hat and
+/// props go.
+///
+/// The character is a stack of Core Animation layers rather than one drawing, because redrawing
+/// everything for every update kept the CPU busy, mostly blurring the glow. The window server
+/// moves, turns and fades layers on the GPU, so the pose is a transform, the twinkles are tiny
+/// layers, and the face and hat are pictures that are redrawn only when they change.
 class GooglyCharacterView: CharacterView {
     struct Palette {
+        let colors: [CGColor]
         let gradient: CGGradient
         let mid: CGColor
         let glow: CGColor
@@ -17,7 +34,7 @@ class GooglyCharacterView: CharacterView {
     static func palette(_ colors: [UInt32], glow: CGColor, lid: UInt32) -> Palette {
         let cg = colors.map { CGColor.hex($0) }
         let gradient = CGGradient(colorsSpace: CGColorSpace(name: CGColorSpace.sRGB), colors: cg as CFArray, locations: [0, 0.5, 1])!
-        return Palette(gradient: gradient, mid: cg[1], glow: glow, lid: .hex(lid))
+        return Palette(colors: cg, gradient: gradient, mid: cg[1], glow: glow, lid: .hex(lid))
     }
 
     static let ink = CGColor.hex(0x22143A)
@@ -29,12 +46,65 @@ class GooglyCharacterView: CharacterView {
     private var nextBlink: TimeInterval = 2.5
     private var blinkUntil: TimeInterval = 0
 
+    // The layers in `contentLayer`, back to front:
+    //   bodyCanvas: `drawBody`, painted for every update (unless the body is layered)
+    //   poseLayer: body coordinates (origin in the middle of the body), hopping and squashing
+    //     layeredBody, eyesLayer, mouthLayer, costumeLayer, propLayer
+    //   twinkleLayers, zLayer
+    private let bodyCanvas = PaintedLayer()
+    private let poseLayer = CALayer()
+    private var layeredBody: LayeredBody?
+    private let eyesLayer = PaintedLayer()
+    private let mouthLayer = PaintedLayer()
+    private let costumeLayer = CALayer()
+    private let propLayer = PaintedLayer()
+    private let twinkleLayers = [CALayer(), CALayer(), CALayer()]
+    private let zLayer = PaintedLayer()
+    private var shownEyes: EyesKey?
+    private var shownMouth: MouthKey?
+    private var shownCostume: Costume?
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        // Twinkles shrink to less than half their picture's size as they pulse; mipmaps keep them smooth.
+        for twinkle in twinkleLayers { twinkle.minificationFilter = .trilinear }
+        contentLayer.addSublayer(bodyCanvas)
+        contentLayer.addSublayer(poseLayer)
+        poseLayer.addSublayer(eyesLayer)
+        poseLayer.addSublayer(mouthLayer)
+        poseLayer.addSublayer(costumeLayer)
+        poseLayer.addSublayer(propLayer)
+        twinkleLayers.forEach(contentLayer.addSublayer)
+        contentLayer.addSublayer(zLayer)
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
     // MARK: - For subclasses
 
     func palette(for state: CreatureState) -> Palette { Self.neutral }
 
-    /// The body, centered on the origin with radius `R`. The face is drawn on top afterwards.
+    /// The body, centered on the origin with radius `R`, drawn for every update. The face is
+    /// drawn on top afterwards.
     func drawBody(_ ctx: CGContext, R: CGFloat, palette: Palette, t: CGFloat) {}
+
+    /// A glow around what `drawBody` draws, which the window server blurs on the GPU. Much cheaper
+    /// than `CGContext.setShadow`, which blurs on the CPU every time the body is drawn.
+    struct Glow {
+        var color: CGColor
+        /// A Core Animation shadow radius: about half of a `setShadow` blur.
+        var radius: CGFloat
+    }
+
+    func bodyGlow(for palette: Palette) -> Glow? { nil }
+
+    /// The body built from layers instead of `drawBody`, which saves drawing it for every update.
+    /// `scale` is pixels per point for pictures it makes. Nil = use `drawBody`.
+    ///
+    /// Called again whenever `pictureScale` changes (another screen, another size, shrinking into
+    /// the trash), so keep no state across calls. A layered body brings its own glow: `bodyGlow`
+    /// only applies to `drawBody`.
+    func makeLayeredBody(R: CGFloat, scale: CGFloat) -> LayeredBody? { nil }
 
     /// Where the hat's bottom sits, as a fraction of the radius above the center.
     var hatHeight: CGFloat { 0.62 }
@@ -42,11 +112,10 @@ class GooglyCharacterView: CharacterView {
     /// Where a held prop's bottom-center sits, in fractions of the radius from the center.
     var propAnchor: CGPoint { CGPoint(x: 0.72, y: -0.35) }
 
-    func twinkleColor(alpha: CGFloat) -> CGColor {
-        CGColor(srgbRed: 1, green: 0.93, blue: 0.6, alpha: alpha)
-    }
+    /// The twinkles' color, read when their pictures are made (not for every update).
+    var twinkleColor: CGColor { CGColor(srgbRed: 1, green: 0.93, blue: 0.6, alpha: 1) }
 
-    // MARK: - Drawing
+    // MARK: - Updating
 
     override func advance(by dt: TimeInterval) {
         super.advance(by: dt)
@@ -56,34 +125,126 @@ class GooglyCharacterView: CharacterView {
         }
     }
 
-    override func draw(_ dirtyRect: NSRect) {
-        guard let ctx = NSGraphicsContext.current?.cgContext else { return }
-        applyTurn(ctx)
+    override func updateContent() {
+        let density = pixelDensity
+        bodyCanvas.contentsScale = density
+        zLayer.contentsScale = density
         let R = radius
         let dir: CGFloat = facingRight ? 1 : -1
         let t = CGFloat(time)
         let pose = self.pose(dir: dir, t: t, st: CGFloat(stateTime))
         let palette = palette(for: state)
         let center = CGPoint(x: bounds.midX, y: baseY + pose.dy + R * pose.sy)
-        let look = lookVector(dir: dir, t: t)
 
-        ctx.saveGState()
-        ctx.translateBy(x: bounds.midX, y: baseY + pose.dy)
-        ctx.scaleBy(x: pose.sx, y: pose.sy)
-        ctx.translateBy(x: 0, y: R)
-        ctx.rotate(by: pose.rotation + spin)
+        let toBody = CGAffineTransform(translationX: bounds.midX, y: baseY + pose.dy)
+            .scaledBy(x: pose.sx, y: pose.sy)
+            .translatedBy(x: 0, y: R)
+            .rotated(by: pose.rotation + spin)
+        poseLayer.setAffineTransform(toBody)
 
-        drawBody(ctx, R: R, palette: palette, t: t)
-        drawFace(ctx, R: R, look: look, palette: palette, t: t)
-        // The hat sits on top of the head, so it bobs and tilts with the body.
-        costume?.draw(in: ctx, anchor: CGPoint(x: 0, y: R * hatHeight), width: R * 0.85)
-        prop?.draw(in: ctx, anchor: CGPoint(x: R * propAnchor.x, y: R * propAnchor.y), height: R * 0.45, t: t)
-        ctx.restoreGState()
+        if let layeredBody {
+            layeredBody.update(state: state, palette: palette, t: t)
+        } else {
+            // Drawn with the pose already applied, so it's painted at the screen's resolution
+            // instead of being resampled.
+            bodyCanvas.repaint(bounds) { [weak self] ctx in
+                guard let self else { return }
+                ctx.concatenate(toBody)
+                drawBody(ctx, R: R, palette: palette, t: t)
+            }
+            let glow = bodyGlow(for: palette)
+            bodyCanvas.shadowOpacity = glow == nil ? 0 : 1
+            bodyCanvas.shadowColor = glow?.color
+            bodyCanvas.shadowRadius = glow?.radius ?? 0
+            bodyCanvas.shadowOffset = .zero
+        }
 
-        if state == .sleep {
-            drawZs(center: center, dir: dir, t: t)
-        } else if state != .sulk {
-            drawTwinkles(ctx, center: center, R: R, t: t)
+        updateFace(R: R, look: lookVector(dir: dir, t: t), palette: palette, t: t)
+        updateAccessories(R: R, t: t)
+        updateTwinkles(center: center, R: R, t: t)
+        updateZs(center: center, dir: dir, t: t)
+    }
+
+    override func remakePictures() {
+        for painted in [eyesLayer, mouthLayer, propLayer] {
+            painted.contentsScale = pictureScale
+        }
+        layeredBody?.layer.removeFromSuperlayer()
+        layeredBody = makeLayeredBody(R: radius, scale: pictureScale)
+        if let layeredBody { poseLayer.insertSublayer(layeredBody.layer, at: 0) }
+        bodyCanvas.isHidden = layeredBody != nil
+
+        // One twinkle at its biggest; each one is scaled and faded.
+        let r: CGFloat = 7
+        let color = twinkleColor
+        for twinkle in twinkleLayers {
+            twinkle.showPicture(of: CGRect(x: -r - 1, y: -r - 1, width: 2 * r + 2, height: 2 * r + 2), scale: pictureScale) { ctx in
+                ctx.addPath(Shapes.sparkle(radius: r, pinch: 0.18))
+                ctx.setFillColor(color)
+                ctx.fillPath()
+            }
+        }
+        shownEyes = nil
+        shownMouth = nil
+        shownCostume = nil
+        costumeLayer.contents = nil
+    }
+
+    // What the eyes and the mouth look like; they're repainted only when this changes.
+    private struct EyesKey: Equatable {
+        var state: CreatureState
+        var closed: Bool
+        var lookX: Int, lookY: Int
+    }
+
+    private struct MouthKey: Equatable {
+        var state: CreatureState
+        var motion: Int
+    }
+
+    /// The eyes (with the blush) and the mouth are painted separately, so talking only repaints the mouth.
+    private func updateFace(R: CGFloat, look: CGVector, palette: Palette, t: CGFloat) {
+        let eyes = EyesKey(state: state, closed: state == .sleep || time < blinkUntil,
+                           lookX: Int((look.dx * 100).rounded()), lookY: Int((look.dy * 100).rounded()))
+        if eyes != shownEyes {
+            shownEyes = eyes
+            eyesLayer.repaint(CGRect(x: -R * 0.6, y: -R * 0.25, width: R * 1.2, height: R * 0.65)) { [weak self] ctx in
+                guard let self else { return }
+                drawEyes(ctx, R: R, look: look, palette: palette)
+            }
+        }
+        let motion = mouthMotion(t: t)
+        let mouth = MouthKey(state: state, motion: Int((motion * 100).rounded()))
+        if mouth != shownMouth {
+            shownMouth = mouth
+            mouthLayer.repaint(CGRect(x: -R * 0.3, y: -R * 0.5, width: R * 0.6, height: R * 0.36)) { [weak self] ctx in
+                guard let self else { return }
+                drawMouth(ctx, R: R, motion: motion)
+            }
+        }
+    }
+
+    private func updateAccessories(R: CGFloat, t: CGFloat) {
+        if costume != shownCostume {
+            shownCostume = costume
+            costumeLayer.isHidden = costume == nil
+            if let costume {
+                let w = R * 0.85
+                let anchor = CGPoint(x: 0, y: R * hatHeight)
+                costumeLayer.showPicture(of: costume.area(anchor: anchor, width: w), scale: pictureScale) { ctx in
+                    costume.draw(in: ctx, anchor: anchor, width: w)
+                }
+            }
+        }
+
+        // The prop's steam rises all the time, so it's painted for every update (it's small).
+        propLayer.isHidden = prop == nil
+        if let prop {
+            let h = R * 0.45
+            let anchor = CGPoint(x: R * propAnchor.x, y: R * propAnchor.y)
+            propLayer.repaint(prop.area(anchor: anchor, height: h)) { ctx in
+                prop.draw(in: ctx, anchor: anchor, height: h, t: t)
+            }
         }
     }
 
@@ -133,7 +294,7 @@ class GooglyCharacterView: CharacterView {
         }
     }
 
-    private func drawFace(_ ctx: CGContext, R: CGFloat, look: CGVector, palette: Palette, t: CGFloat) {
+    private func drawEyes(_ ctx: CGContext, R: CGFloat, look: CGVector, palette: Palette) {
         let eyeY = R * 0.1
         let eyeDX = R * 0.24
         let eyesClosed = state == .sleep || time < blinkUntil
@@ -155,8 +316,6 @@ class GooglyCharacterView: CharacterView {
                 drawOpenEye(ctx, x: x, y: eyeY, R: R, look: look, palette: palette)
             }
         }
-
-        drawMouth(ctx, R: R, t: t)
     }
 
     private func drawClosedEye(_ ctx: CGContext, x: CGFloat, y: CGFloat, r: CGFloat) {
@@ -216,7 +375,17 @@ class GooglyCharacterView: CharacterView {
         ctx.strokePath()
     }
 
-    private func drawMouth(_ ctx: CGContext, R: CGFloat, t: CGFloat) {
+    /// How far the mouth is open (talking) or how big it is (snoring): the only part of the face
+    /// that moves by itself.
+    private func mouthMotion(t: CGFloat) -> CGFloat {
+        switch state {
+        case .talk: return 0.25 + 0.75 * abs(sin(t * 13))
+        case .sleep: return 1 + sin(t * 1.6) * 0.3
+        default: return 0
+        }
+    }
+
+    private func drawMouth(_ ctx: CGContext, R: CGFloat, motion: CGFloat) {
         let my = -R * 0.22
         let w = R * 0.12
         ctx.setStrokeColor(Self.ink)
@@ -230,8 +399,7 @@ class GooglyCharacterView: CharacterView {
             ctx.addQuadCurve(to: CGPoint(x: w, y: my), control: CGPoint(x: 0, y: my - w * 1.1))
             ctx.strokePath()
         case .talk:
-            let open = 0.25 + 0.75 * abs(sin(t * 13))
-            let h = R * 0.17 * open
+            let h = R * 0.17 * motion
             ctx.fillEllipse(in: CGRect(x: -R * 0.1, y: my - R * 0.03 - h / 2, width: R * 0.2, height: h))
         case .fall, .drag:
             ctx.fillEllipse(in: CGRect(x: -R * 0.065, y: my - R * 0.1, width: R * 0.13, height: R * 0.16))
@@ -249,33 +417,47 @@ class GooglyCharacterView: CharacterView {
             ctx.setFillColor(.hex(0xFF7AB8))
             ctx.fillEllipse(in: CGRect(x: -gw * 0.4, y: my - gw * 0.62, width: gw * 0.8, height: gw * 0.36))
         case .sleep:
-            let s = 1 + sin(t * 1.6) * 0.3
+            let s = motion
             ctx.fillEllipse(in: CGRect(x: -R * 0.035 * s, y: my - R * 0.06, width: R * 0.07 * s, height: R * 0.05 * s))
         }
     }
 
     // MARK: - Extras
 
-    private func drawTwinkles(_ ctx: CGContext, center: CGPoint, R: CGFloat, t: CGFloat) {
-        for i in 0..<3 {
+    private func updateTwinkles(center: CGPoint, R: CGFloat, t: CGFloat) {
+        let visible = state != .sleep && state != .sulk
+        for (i, twinkle) in twinkleLayers.enumerated() {
+            twinkle.isHidden = !visible
+            guard visible else { continue }
             let phase = t * 0.8 + CGFloat(i) * 2.094
-            let p = CGPoint(x: center.x + cos(phase) * R * 1.18, y: center.y + sin(phase) * R)
             let pulse = 0.5 + 0.5 * sin(t * 3 + CGFloat(i) * 1.7)
-            ctx.saveGState()
-            ctx.translateBy(x: p.x, y: p.y)
-            ctx.addPath(Shapes.sparkle(radius: 3 + pulse * 4, pinch: 0.18))
-            ctx.setFillColor(twinkleColor(alpha: 0.35 + 0.65 * pulse))
-            ctx.fillPath()
-            ctx.restoreGState()
+            let size = (3 + pulse * 4) / 7
+            twinkle.position = CGPoint(x: center.x + cos(phase) * R * 1.18, y: center.y + sin(phase) * R)
+            twinkle.setAffineTransform(CGAffineTransform(scaleX: size, y: size))
+            twinkle.opacity = Float(0.35 + 0.65 * pulse)
         }
     }
 
-    private func drawZs(center: CGPoint, dir: CGFloat, t: CGFloat) {
+    private func updateZs(center: CGPoint, dir: CGFloat, t: CGFloat) {
+        zLayer.isHidden = state != .sleep
+        guard state == .sleep else { return }
+        // Where the Z's start; they drift up and away from there. The layer sits on whole pixels,
+        // so its text isn't resampled.
+        let start = CGPoint(x: center.x + dir * radius * 0.45 - 5, y: center.y + radius * 0.35)
+        let scale = zLayer.contentsScale
+        let area = CGRect(x: ((start.x - 24) * scale).rounded(.down) / scale, y: ((start.y - 6) * scale).rounded(.down) / scale,
+                          width: 60, height: 56)
+        zLayer.repaint(area) { [weak self] ctx in
+            guard let self else { return }
+            drawZs(start: start, dir: dir, t: t)
+        }
+    }
+
+    private func drawZs(start: CGPoint, dir: CGFloat, t: CGFloat) {
         for i in 0..<3 {
             let phase = (t * 0.35 + CGFloat(i) / 3).truncatingRemainder(dividingBy: 1)
             let alpha = sin(phase * .pi)
-            let p = CGPoint(x: center.x + dir * (radius * 0.45 + phase * 20) - 5,
-                            y: center.y + radius * 0.35 + phase * 24)
+            let p = CGPoint(x: start.x + dir * phase * 20, y: start.y + phase * 24)
             let attrs: [NSAttributedString.Key: Any] = [
                 .font: NSFont.systemFont(ofSize: 9 + phase * 8, weight: .heavy),
                 .foregroundColor: NSColor(srgbRed: 0.45, green: 0.4, blue: 0.95, alpha: alpha),

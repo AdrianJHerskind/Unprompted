@@ -12,6 +12,8 @@ final class ChatBox: NSObject, NSTextFieldDelegate, NSWindowDelegate {
     private let field = NSTextField()
     private var history: [String] = []
     private var historyIndex = 0
+    /// Where it was last placed (placing it reads the screen's visible frame, which is slow).
+    private var placedAt: CGRect?
 
     override init() {
         super.init()
@@ -53,12 +55,13 @@ final class ChatBox: NSObject, NSTextFieldDelegate, NSWindowDelegate {
 
     /// Call every frame while open, so the box stays next to the creature.
     func follow(_ anchor: CGRect) {
-        if isOpen { place(near: anchor) }
+        if isOpen && anchor != placedAt { place(near: anchor) }
     }
 
     /// Beside the anchor (the creature), on whichever side has room.
     private func place(near anchor: CGRect) {
         guard let screen = NSScreen.nearest(to: CGPoint(x: anchor.midX, y: anchor.midY)) else { return }
+        placedAt = anchor
         let size = panel.frame.size
         let visible = screen.visibleFrame
         var x = anchor.maxX - 8

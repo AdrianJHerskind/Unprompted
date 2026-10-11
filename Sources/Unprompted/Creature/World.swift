@@ -33,6 +33,9 @@ final class World {
     private(set) var windows: [WindowInfo] = []
     /// Cached, because `NSScreen.screens` builds a new array on every call.
     private(set) var screens: [NSScreen] = NSScreen.screens
+    /// The screens' `visibleFrame`s, read along with the window list: asking a screen takes tens of
+    /// microseconds, and walking needs one every frame.
+    private var visibleFrames: [CGRect] = []
 
     private let ownPID = Int(ProcessInfo.processInfo.processIdentifier)
     private var lastRefresh: TimeInterval = -1
@@ -43,6 +46,8 @@ final class World {
     /// How often the full window list is read. Windows the creature is attached to are tracked
     /// live with `liveFrame(ofWindow:)`, so this can be relaxed.
     private static let refreshInterval: TimeInterval = 0.2
+    /// Each read costs the window server (and this app) about a millisecond.
+    private static let relaxedRefreshInterval: TimeInterval = 1
 
     init() {
         let workspace = NSWorkspace.shared.notificationCenter
@@ -57,12 +62,26 @@ final class World {
         }
         observers.append(NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.screens = NSScreen.screens }
+            MainActor.assumeIsolated {
+                self?.screens = NSScreen.screens
+                self?.readVisibleFrames()
+            }
         })
+        readVisibleFrames()
     }
 
-    func refreshIfNeeded(now: TimeInterval) {
-        guard now - lastRefresh >= Self.refreshInterval else { return }
+    private func readVisibleFrames() {
+        visibleFrames = screens.map(\.visibleFrame)
+    }
+
+    /// The part of `screen` without the menu bar and the Dock, as of the last refresh.
+    func visibleFrame(of screen: NSScreen) -> CGRect {
+        screens.firstIndex { $0 === screen }.map { visibleFrames[$0] } ?? screen.visibleFrame
+    }
+
+    /// `relaxed`: nothing on the screen depends on windows right now, so the list may be older.
+    func refreshIfNeeded(now: TimeInterval, relaxed: Bool = false) {
+        guard now - lastRefresh >= (relaxed ? Self.relaxedRefreshInterval : Self.refreshInterval) else { return }
         lastRefresh = now
         refresh()
     }
@@ -73,17 +92,21 @@ final class World {
             ownersNeedRefresh = false
             refreshAppWindowOwners()
         }
+        readVisibleFrames() // the Dock may have moved or resized
+        // Read as NSDictionary: converting every window's entry into a Swift dictionary costs more
+        // than the window server call itself.
         guard let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
-                as? [[String: Any]] else { return }
-        windows = list.compactMap { info in
-            guard (info[kCGWindowLayer as String] as? Int) == 0,
-                  let owner = info[kCGWindowOwnerPID as String] as? Int,
+                as NSArray? else { return }
+        windows = list.compactMap { item in
+            guard let info = item as? NSDictionary,
+                  (info[kCGWindowLayer] as? Int) == 0,
+                  let owner = info[kCGWindowOwnerPID] as? Int,
                   owner != ownPID, appWindowOwners.contains(owner),
-                  let id = info[kCGWindowNumber as String] as? Int,
-                  let boundsDict = info[kCGWindowBounds as String] as? NSDictionary,
+                  let id = info[kCGWindowNumber] as? Int,
+                  let boundsDict = info[kCGWindowBounds] as? NSDictionary,
                   let r = CGRect(dictionaryRepresentation: boundsDict as CFDictionary),
                   r.width >= 80, r.height >= 40 else { return nil }
-            if let alpha = info[kCGWindowAlpha as String] as? Double, alpha < 0.1 { return nil }
+            if let alpha = info[kCGWindowAlpha] as? Double, alpha < 0.1 { return nil }
             return WindowInfo(id: id, ownerPID: owner, frame: ScreenGeometry.cocoaRect(fromTopLeft: r))
         }
     }
@@ -150,8 +173,8 @@ final class World {
     /// or the creature was dropped there, and it should end up standing on top.
     func ground(atX x: CGFloat, below feetY: CGFloat, tolerance: CGFloat = 2) -> Ground? {
         var best: Ground?
-        for screen in screens where x >= screen.frame.minX && x < screen.frame.maxX {
-            let floor = screen.visibleFrame.minY
+        for (screen, visible) in zip(screens, visibleFrames) where x >= screen.frame.minX && x < screen.frame.maxX {
+            let floor = visible.minY
             let reachable = floor <= feetY + tolerance || feetY >= screen.frame.minY - 1
             if reachable, floor > (best?.y ?? -.infinity) {
                 best = Ground(y: floor, windowID: nil)
@@ -185,13 +208,14 @@ final class World {
             s != screen && abs((dir > 0 ? s.frame.minX : s.frame.maxX) - boundaryX) < 2
                 && s.frame.maxY >= screen.frame.minY - 2 && s.frame.minY < screen.frame.maxY
         }
-        if neighbors.contains(where: { $0.frame.minY <= feetY + 2 && $0.frame.maxY > feetY + 2 && $0.visibleFrame.minY <= feetY + 3 }) {
+        let floor = { self.visibleFrame(of: $0).minY }
+        if neighbors.contains(where: { $0.frame.minY <= feetY + 2 && $0.frame.maxY > feetY + 2 && floor($0) <= feetY + 3 }) {
             return .level
         }
         // Climbable: the higher floor must be within this screen's height, with room to stand.
-        if let up = neighbors.filter({ $0.visibleFrame.minY > feetY + 3 && $0.visibleFrame.minY < screen.frame.maxY - height * 0.6 })
-            .min(by: { $0.visibleFrame.minY < $1.visibleFrame.minY }) {
-            return .step(boundaryX: boundaryX, floor: up.visibleFrame.minY)
+        if let up = neighbors.filter({ floor($0) > feetY + 3 && floor($0) < screen.frame.maxY - height * 0.6 })
+            .min(by: { floor($0) < floor($1) }) {
+            return .step(boundaryX: boundaryX, floor: floor(up))
         }
         if let down = neighbors.filter({ $0.frame.maxY <= feetY + 2 }).max(by: { $0.frame.maxY < $1.frame.maxY }) {
             return .drop(boundaryX: boundaryX, screen: down)

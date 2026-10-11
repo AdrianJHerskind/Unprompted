@@ -3,10 +3,10 @@ import AppKit
 /// What it says and when: unprompted remarks, Clippy-style questions, the evening report offer
 /// and sticky notes.
 extension Assistant {
-    /// Free to start talking on its own: on the screen, awake, in a good mood, not busy, and not
-    /// asked to be quiet.
+    /// Free to start talking on its own: on the screen (and someone can see it), awake, in a good
+    /// mood, not busy, and not asked to be quiet.
     var canTalk: Bool {
-        !isHidden && quiet == nil && creature.isVisible && !bubble.isShowing && !chat.isOpen
+        !isHidden && audience.isWatching && quiet == nil && creature.isVisible && !bubble.isShowing && !chat.isOpen
             && !creature.isSleeping && !creature.isSulking && !creature.isDragging && !creature.isDying
     }
 
