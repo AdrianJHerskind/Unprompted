@@ -7,6 +7,7 @@
 #     -c, --characters a,b   characters to measure (default: all; --list shows them)
 #     -m, --modes a,b        any of idle, walk, talk, sleep (default: all four)
 #     -a, --accessories      wear a party hat and a coffee
+#     -M, --moving-cursor    circle the cursor around the creature, so its eyes follow it as in real use
 #     -s, --seconds n        length of each measurement (default: 8)
 #     -r, --rounds n         repeat everything n times and take the median (default: 1)
 #     --screen n             screen to run on, 0 = the main screen (default: 0)
@@ -17,8 +18,8 @@ unset CDPATH
 ROOT="$(cd -- "$(dirname -- "$0")/.." && pwd)"
 BENCH="$ROOT/tools/cpu-benchmark/main.swift"
 
-REF="" CHARS="" MODES="idle walk talk sleep" ACCESSORIES="" SECS=8 ROUNDS=1 SCREEN=0 LIST=0
-usage() { sed -n '5,14p' "$0" | sed 's/^# \{0,1\}//'; }
+REF="" CHARS="" MODES="idle walk talk sleep" ACCESSORIES="" MOVING="" SECS=8 ROUNDS=1 SCREEN=0 LIST=0
+usage() { sed -n '5,15p' "$0" | sed 's/^# \{0,1\}//'; }
 die() { echo "$1" >&2; exit "${2:-64}"; }
 need() { # <option> <value>: an option's value must be there and not be another option
     case "${2-}" in ''|-*) die "$1 needs a value (see --help)" ;; esac
@@ -31,7 +32,8 @@ while [ $# -gt 0 ]; do
         --compare) need "$1" "${2-}"; REF="$2"; shift ;;
         -c|--characters) need "$1" "${2-}"; CHARS="$(echo $(echo "$2" | tr ',' ' '))"; [ -n "$CHARS" ] || die "$1 needs a value (see --help)"; shift ;;
         -m|--modes) need "$1" "${2-}"; MODES="$(echo "$2" | tr ',' ' ')"; shift ;;
-        -a|--accessories) ACCESSORIES=accessories ;;
+        -a|--accessories) ACCESSORIES=--accessories ;;
+        -M|--moving-cursor) MOVING=--moving-cursor ;;
         -s|--seconds) need "$1" "${2-}"; count "$1" "$2"; SECS="$2"; shift ;;
         -r|--rounds) need "$1" "${2-}"; count "$1" "$2"; ROUNDS="$2"; shift ;;
         --screen) need "$1" "${2-}"; SCREEN="$2"; shift ;;
@@ -135,7 +137,8 @@ run() { # <build> <character> <mode>
     fi
     DONE=$(( DONE + 1 ))
     printf '\r[%d/%d] %-8s %-14s %-6s' "$DONE" "$TOTAL" "$name" "$2" "$3" >&2
-    if (cd "$tree" && "$binary" "$2" "$3" "$SECS" "$SCREEN" $ACCESSORIES) > "$WORK/run.out" 2> "$WORK/run.err"; then :; fi
+    if (cd "$tree" && "$binary" --character "$2" --mode "$3" --seconds "$SECS" --screen "$SCREEN" $ACCESSORIES $MOVING) \
+        > "$WORK/run.out" 2> "$WORK/run.err"; then :; fi
     if grep -q '^RESULT ' "$WORK/run.out"; then
         sed -n "s/^RESULT /$1 $round /p" "$WORK/run.out" >> "$WORK/results"
     else
@@ -149,7 +152,7 @@ set -- $CHARS
 for b in $BUILDS; do
     binary="$WORK/this" tree="$ROOT"
     [ "$b" = base ] && binary="$WORK/base-bench" tree="$WORK/base"
-    (cd "$tree" && "$binary" "$1" idle 1 "$SCREEN") > /dev/null 2>&1 || true
+    (cd "$tree" && "$binary" --character "$1" --mode idle --seconds 1 --screen "$SCREEN") > /dev/null 2>&1 || true
 done
 
 for (( round = 1; round <= ROUNDS; round++ )); do
@@ -167,7 +170,7 @@ for (( round = 1; round <= ROUNDS; round++ )); do
 done
 printf '\r%60s\r' '' >&2
 
-awk -v ref="$REF" -v base="${BASE_LABEL-}" -v chars="$CHARS" -v modes="$MODES" -v new="${NEW-}" -v screen="$SCREEN" -v extras="$ACCESSORIES" '
+awk -v ref="$REF" -v base="${BASE_LABEL-}" -v chars="$CHARS" -v modes="$MODES" -v new="${NEW-}" -v screen="$SCREEN" -v extras="$ACCESSORIES" -v moving="$MOVING" '
     # Fields: build round character mode scale app-cpu app-instructions windowserver windowmanager.
     # Each round starts with a run without a creature, the background for that round.
     function add(name, k, v) { if (v != "-") { vals[name, k, ++cnt[name, k]] = v } }
@@ -200,7 +203,8 @@ awk -v ref="$REF" -v base="${BASE_LABEL-}" -v chars="$CHARS" -v modes="$MODES" -
         for (i = 1; i <= nc; i++) for (j = 1; j <= nm; j++)
             printf "%-14s %-6s %" w "s %" w "s %" w "s %" w "s\n", cs[i], ms[j], pair(cs[i], ms[j], "app"), pair(cs[i], ms[j], "ins"), pair(cs[i], ms[j], "wm"), pair(cs[i], ms[j], "ws")
         who = ref == "" ? "This checkout" : base " -> this checkout"
-        printf "\n%s on screen %d (%sx)%s.\n", who, screen, scale, (extras != "" ? ", with hat and coffee" : "")
+        printf "\n%s on screen %d (%sx)%s%s.\n", who, screen, scale, (extras != "" ? ", with hat and coffee" : ""),
+            (moving != "" ? ", with the cursor circling" : "")
         print "App CPU: the creature itself, in % of one core. App instr.: the instructions it ran, in millions"
         print "a second; they don'"'"'t depend on which cores macOS picked, so compare builds by them first."
         idle = median("ws", "bg")

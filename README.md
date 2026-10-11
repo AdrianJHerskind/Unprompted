@@ -103,7 +103,7 @@ Only `idle` is required. The other states are `walk`, `fall`, `drag`, `talk`, `s
 `movement` is `walk`, `waddle`, `hop`, `roll` or `float`, and `bounciness` goes from 0 (a sack of potatoes) to 0.9.
 Then choose **Reload Characters**. `Resources/Characters/mrbyte/` is a complete example.
 
-For a look made in code, implement `CharacterPack` and a `CharacterView` subclass and add it to `CharacterLibrary.loadAll()`. The view builds the character from Core Animation layers in its `contentLayer` and brings them up to date in `updateContent()`, including `spin`, the hat and the prop (`turn` is taken care of). Subclass `GooglyCharacterView` instead to get the googly face, poses and extras of the built-in characters: it only needs a body, drawn in `drawBody` or built from layers in `makeLayeredBody`.
+For a look made in code, implement `CharacterPack` and a `CharacterView` subclass and add it to `CharacterLibrary.loadAll()`. The view builds the character from Core Animation layers in its `contentLayer` and brings them up to date in `updateContent()`, including `spin`, the hat and the prop (`turn` is taken care of). Subclass `GooglyCharacterView` instead to get the googly face, poses and extras of the built-in characters: it only needs a body, built from layers in `makeLayeredBody` or, more simply but at a higher cost, drawn in `drawBody` for every update.
 
 To keep a code-drawn character only on your Mac, put it in `Sources/Unprompted/Characters/Local/`, which git ignores, and hand it over through a `LocalCharacters` class there (see `LocalCharacterSource` in `CharacterLibrary.swift`).
 
@@ -137,7 +137,7 @@ tools/cpu-benchmark.sh --compare main
 
 This builds your checkout (uncommitted changes included) and the commit on `main` your work started from. It runs a real creature for every character, standing, walking, talking (with a speech bubble) and asleep, alternating between the two builds, and prints what each costs. Quit Unprompted first and leave the Mac alone while it runs, about 10 minutes; it keeps the display awake. Don't lock or cover the screen either: a creature nobody can see stops drawing, so those runs fail. Paste the table into your pull request. Characters your change adds show up as `new`.
 
-To look at one thing more closely, use something like `tools/cpu-benchmark.sh --compare main -c ghost -m walk -r 3`. Add `-a` to wear a hat and a coffee. `--help` lists all options. If your work is committed on `main` itself, compare with `origin/main` instead, or `upstream/main` in a fork.
+To look at one thing more closely, use something like `tools/cpu-benchmark.sh --compare main -c ghost -m walk -r 3`. Add `-a` to wear a hat and a coffee. The cursor stays in a corner of the screen while it runs, so eyes that follow it hold still; add `-M` to have it circle the creature instead (300 pt away, once every 4 seconds), as a cursor does in real use, and see what following it costs. `--help` lists all options. If your work is committed on `main` itself, compare with `origin/main` instead, or `upstream/main` in a fork.
 
 The table has four columns:
 
@@ -152,8 +152,8 @@ The benchmark runs one creature with the app's frame-loop rates and window-list 
 
 How to keep it light:
 
-- **Use layers.** Build characters from Core Animation layers and change their properties (transform, position, opacity) instead of drawing. The window server moves, turns and fades layers on the GPU. See `makeLayeredBody`, `SparkleBody` and `CookieBody`.
-- **Repaint only what changed.** A `PaintedLayer` should repaint only when what it shows has changed (see how `GooglyCharacterView` keys the eyes and mouth). Parts that rarely change can be pictures (`showPicture`).
+- **Use layers.** Build characters from Core Animation layers and change their properties (transform, position, opacity, a shape layer's path) instead of drawing. The window server moves, turns, fades and fills layers on the GPU. See `makeLayeredBody`, `SparkleBody`, `CookieBody` and `GhostBody`.
+- **Repaint only what changed.** A `PaintedLayer` should repaint only when what it shows has changed (see how `GooglyCharacterView` keys the eyes and mouth). Parts that only move shouldn't be repainted at all: the pupils that follow the cursor are layers moving over a picture of the eyes. Parts that rarely change can be pictures (`showPicture`).
 - **No blurs in drawing code.** `CGContext.setShadow` blurs on the CPU every time something is drawn, which was the biggest cost before. Use a layer shadow with a `shadowPath`, or `bodyGlow` for a drawn body.
 - **Don't move windows every frame.** The creature moves inside a stage window that only follows now and then. Bubbles are only placed again when what they point at moves.
 - **Calm poses can update less often** (`Creature.updateInterval(for:)`). Anything that moves updates every frame: motion has to stay smooth at 60 fps.

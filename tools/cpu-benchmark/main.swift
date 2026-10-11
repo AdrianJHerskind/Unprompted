@@ -5,21 +5,45 @@ import AppKit
 // window server and the window manager. tools/cpu-benchmark.sh builds it together with the app's
 // sources and runs it for every character (see "Checking CPU use" in the README).
 //
-//   cpu-benchmark <character id> <mode> <seconds> [screen index] [accessories]
+//   cpu-benchmark --character <id> --mode <mode> --seconds <n> [--screen <index>] [--accessories]
+//                 [--moving-cursor]
 //   cpu-benchmark --list | --screens
 //
 // Modes: idle, walk (back and forth), talk (with a speech bubble), sleep, or none (no creature:
-// the background). "accessories" puts on a party hat and a coffee.
+// the background). The screen index defaults to 0, the main screen. --accessories puts on a party
+// hat and a coffee. The cursor seems to stay in the screen's top-left corner, or with
+// --moving-cursor, to circle the creature as a real cursor moves about, so the eyes follow it.
 // Prints: RESULT <character> <mode> <screen scale> <app %> <app M instructions/s> <WindowServer %>
 // <WindowManager %>, with "-" for what it couldn't measure. It fails (exit 3) if the creature
 // couldn't be seen for part of the time: it stops drawing then, so the numbers would be wrong.
-
-let args = CommandLine.arguments
+//
+// It's built against the sources of the commit being compared with too (--compare), so it may only
+// use what the app had when the benchmark was added.
 
 func fail(_ message: String, code: Int32 = 64) -> Never {
     FileHandle.standardError.write(Data((message + "\n").utf8))
     exit(code)
 }
+
+let usage = "usage: cpu-benchmark --character <id> --mode <idle|walk|talk|sleep|none> --seconds <n> [--screen <index>] [--accessories] [--moving-cursor] | --list | --screens"
+
+/// Options with a value, and flags (present or not).
+let (options, flags): ([String: String], Set<String>) = {
+    var options: [String: String] = [:], flags: Set<String> = []
+    var rest = CommandLine.arguments.dropFirst()
+    while let arg = rest.popFirst() {
+        switch arg {
+        case "--character", "--mode", "--seconds", "--screen":
+            guard let value = rest.popFirst() else { fail("\(arg) needs a value\n\(usage)") }
+            options[arg] = value
+        case "--accessories", "--moving-cursor", "--list", "--screens":
+            flags.insert(arg)
+        default:
+            fail("unknown argument \(arg)\n\(usage)")
+        }
+    }
+    return (options, flags)
+}()
 
 /// CPU seconds and instructions retired by this process so far. Instructions don't depend on
 /// which cores macOS runs it on, or how fast they're clocked, so they compare builds more steadily.
@@ -92,37 +116,48 @@ func startTop(pids: [pid_t], seconds: Int) -> () -> [pid_t: Double] {
     }
 }
 
-/// Fixes where the cursor seems to be, so the eyes look the same way in every run.
-func pinCursor(at point: CGPoint) {
+/// What the cursor circles with --moving-cursor (the creature's middle), updated every frame.
+nonisolated(unsafe) var cursorCircleCenter: CGPoint?
+
+/// Makes the app see a cursor that moves the same way in every run: resting at `point`, or while
+/// `cursorCircleCenter` is set, going round it once every 4 s, 300 pt away. On that circle it
+/// comes near enough to a sleeper now and then to keep it from dozing, as a real cursor would.
+func fakeCursor(restingAt point: CGPoint) {
     guard let method = class_getClassMethod(NSEvent.self, #selector(getter: NSEvent.mouseLocation)) else { return }
-    let location: @convention(block) (AnyObject) -> NSPoint = { _ in point }
+    let start = CACurrentMediaTime()
+    let location: @convention(block) (AnyObject) -> NSPoint = { _ in
+        guard let center = cursorCircleCenter else { return point }
+        let angle = (CACurrentMediaTime() - start) / 4 * 2 * .pi
+        return CGPoint(x: center.x + 300 * cos(angle), y: center.y + 300 * sin(angle))
+    }
     method_setImplementation(method, imp_implementationWithBlock(location))
 }
 
 func format(_ value: Double?) -> String { value.map { String(format: "%.1f", $0) } ?? "-" }
 
 MainActor.assumeIsolated {
-    if args.count == 2 && args[1] == "--list" {
+    if flags.contains("--list") {
         print(CharacterLibrary.loadAll().map(\.id).joined(separator: " "))
         exit(0)
     }
-    if args.count == 2 && args[1] == "--screens" {
+    if flags.contains("--screens") {
         print(NSScreen.screens.count)
         exit(0)
     }
     passOnSignals()
-    guard args.count >= 4, let seconds = Int(args[3]), seconds > 0 else {
-        fail("usage: cpu-benchmark <character id> <idle|walk|talk|sleep|none> <seconds> [screen index] [accessories] | --list")
-    }
-    let characterID = args[1], mode = args[2]
+    guard let characterID = options["--character"], let mode = options["--mode"],
+          let seconds = options["--seconds"].flatMap({ Int($0) }), seconds > 0 else { fail(usage) }
     guard ["idle", "walk", "talk", "sleep", "none"].contains(mode) else { fail("unknown mode \(mode)") }
-    let screenIndex = args.count > 4 ? Int(args[4]) ?? -1 : 0
-    guard NSScreen.screens.indices.contains(screenIndex) else { fail("no screen \(args[4]): there are \(NSScreen.screens.count)") }
+    let screenIndex = Int(options["--screen"] ?? "0") ?? -1
+    guard NSScreen.screens.indices.contains(screenIndex) else {
+        fail("no screen \(options["--screen"] ?? ""): there are \(NSScreen.screens.count)")
+    }
     let screen = NSScreen.screens[screenIndex]
+    let movingCursor = flags.contains("--moving-cursor")
 
     let app = NSApplication.shared
     app.setActivationPolicy(.accessory)
-    pinCursor(at: CGPoint(x: screen.visibleFrame.minX + 40, y: screen.visibleFrame.maxY - 40))
+    fakeCursor(restingAt: CGPoint(x: screen.visibleFrame.minX + 40, y: screen.visibleFrame.maxY - 40))
     let world = World()
     let bubble = SpeechBubble()
     var creature: Creature?
@@ -131,7 +166,7 @@ MainActor.assumeIsolated {
             fail("no character \(characterID)", code: 2)
         }
         let c = Creature(pack: pack, world: world, scale: 1)
-        if args.count > 5 && args[5] == "accessories" {
+        if flags.contains("--accessories") {
             c.costume = .party
             c.prop = .coffee
         }
@@ -142,12 +177,15 @@ MainActor.assumeIsolated {
 
     var last = CACurrentMediaTime()
     let begin = last
-    var nextLine = begin + 2.5
+    // The first line comes before measuring starts (at 2.5 s): a window that has only just appeared
+    // doesn't count as visible yet.
+    var nextLine = begin + 1
     var measureStart: (wall: TimeInterval, usage: (cpu: Double, instructions: Double?))?
     var finishTop: (() -> [pid_t: Double])?
     var timer: Timer?
     var interval: TimeInterval = 0
-    var unseen = false
+    /// How long the creature's window couldn't be seen while measuring.
+    var unseenTime: TimeInterval = 0
 
     @MainActor func frame() {
         let now = CACurrentMediaTime()
@@ -175,15 +213,22 @@ MainActor.assumeIsolated {
             default: c.behaviorUntil = .infinity; c.walkDirection = 0
             }
             c.isTalking = bubble.isShowing
+            if movingCursor { cursorCircleCenter = c.center }
             c.tick(dt: dt)
             bubble.tick(dt: dt, anchor: c.bodyFrame)
         }
 
         // Measured once it has landed and settled.
         if let start = measureStart {
-            if app.windows.contains(where: { $0.isVisible && !$0.occlusionState.contains(.visible) }) { unseen = true }
+            // Only the creature's own window: the character stops drawing while it can't be seen
+            // (a speech bubble that has just appeared doesn't count as visible for a moment either).
+            let hidden = app.windows.contains { window in
+                window.isVisible && !window.occlusionState.contains(.visible)
+                    && window.contentView?.subviews.contains(where: { $0 is CharacterView }) == true
+            }
+            if hidden { unseenTime += dt }
             if now - start.wall >= Double(seconds) {
-                if unseen {
+                if unseenTime > Double(seconds) * 0.05 {
                     fail("it couldn't be seen for part of the time (the screen locked or asleep, the screen saver, or a window over it), so it didn't draw", code: 3)
                 }
                 let usage = ownUsage(), wall = now - start.wall

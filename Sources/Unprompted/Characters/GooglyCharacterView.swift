@@ -12,14 +12,14 @@ protocol LayeredBody: AnyObject {
 
 /// The shared look of the code-drawn characters (Sparkle, Ghost, Cookie Banner):
 /// googly eyes that follow the cursor, a mouth and blush for every mood, poses (hop, squash,
-/// lean), twinkles, sleepy Z's, hats and props. Subclasses draw their own body in `drawBody`
-/// (or build it from layers in `makeLayeredBody`) and can change colors and where the hat and
-/// props go.
+/// lean), twinkles, sleepy Z's, hats and props. Subclasses build their own body from layers in
+/// `makeLayeredBody` (or draw it in `drawBody`) and can change colors and where the hat and props go.
 ///
 /// The character is a stack of Core Animation layers rather than one drawing, because redrawing
 /// everything for every update kept the CPU busy, mostly blurring the glow. The window server
 /// moves, turns and fades layers on the GPU, so the pose is a transform, the twinkles are tiny
-/// layers, and the face and hat are pictures that are redrawn only when they change.
+/// layers, the pupils that follow the cursor are layers moving over the eyes, and the rest of the
+/// face and the hat are pictures that are redrawn only when they change.
 class GooglyCharacterView: CharacterView {
     struct Palette {
         let colors: [CGColor]
@@ -47,20 +47,31 @@ class GooglyCharacterView: CharacterView {
     private var blinkUntil: TimeInterval = 0
 
     // The layers in `contentLayer`, back to front:
-    //   bodyCanvas: `drawBody`, painted for every update (unless the body is layered)
+    //   bodyCanvas: `drawBody`, painted for every update (only for a body that isn't layered)
     //   poseLayer: body coordinates (origin in the middle of the body), hopping and squashing
-    //     layeredBody, eyesLayer, mouthLayer, costumeLayer, propLayer
+    //     layeredBody
+    //     eyesLayer: the blush, and the eye whites or closed eyes
+    //     pupilLayers: the pupils, which only move
+    //     eyeRimsLayer: the rims, and sulky eyelids over the pupils
+    //     mouthLayer, costumeLayer, propLayer
     //   twinkleLayers, zLayer
     private let bodyCanvas = PaintedLayer()
     private let poseLayer = CALayer()
     private var layeredBody: LayeredBody?
     private let eyesLayer = PaintedLayer()
+    private let pupilLayers = [CALayer(), CALayer()]
+    private let eyeRimsLayer = PaintedLayer()
     private let mouthLayer = PaintedLayer()
     private let costumeLayer = CALayer()
     private let propLayer = PaintedLayer()
     private let twinkleLayers = [CALayer(), CALayer(), CALayer()]
     private let zLayer = PaintedLayer()
     private var shownEyes: EyesKey?
+    private var shownRims: RimsKey?
+    private var shownPupilRadius: CGFloat?
+    /// Where a pupil's layer goes, relative to the pupil's center.
+    private var pupilOffset = CGPoint.zero
+    private var shownLook: CGVector?
     private var shownMouth: MouthKey?
     private var shownCostume: Costume?
 
@@ -71,6 +82,8 @@ class GooglyCharacterView: CharacterView {
         contentLayer.addSublayer(bodyCanvas)
         contentLayer.addSublayer(poseLayer)
         poseLayer.addSublayer(eyesLayer)
+        pupilLayers.forEach(poseLayer.addSublayer)
+        poseLayer.addSublayer(eyeRimsLayer)
         poseLayer.addSublayer(mouthLayer)
         poseLayer.addSublayer(costumeLayer)
         poseLayer.addSublayer(propLayer)
@@ -85,7 +98,8 @@ class GooglyCharacterView: CharacterView {
     func palette(for state: CreatureState) -> Palette { Self.neutral }
 
     /// The body, centered on the origin with radius `R`, drawn for every update. The face is
-    /// drawn on top afterwards.
+    /// drawn on top afterwards. The simplest way to make a body, but painting it for every update
+    /// costs far more than layers do (`makeLayeredBody`), which all the built-in characters use.
     func drawBody(_ ctx: CGContext, R: CGFloat, palette: Palette, t: CGFloat) {}
 
     /// A glow around what `drawBody` draws, which the window server blurs on the GPU. Much cheaper
@@ -166,7 +180,7 @@ class GooglyCharacterView: CharacterView {
     }
 
     override func remakePictures() {
-        for painted in [eyesLayer, mouthLayer, propLayer] {
+        for painted in [eyesLayer, eyeRimsLayer, mouthLayer, propLayer] {
             painted.contentsScale = pictureScale
         }
         layeredBody?.layer.removeFromSuperlayer()
@@ -185,16 +199,26 @@ class GooglyCharacterView: CharacterView {
             }
         }
         shownEyes = nil
+        shownRims = nil
+        shownPupilRadius = nil
         shownMouth = nil
         shownCostume = nil
         costumeLayer.contents = nil
     }
 
-    // What the eyes and the mouth look like; they're repainted only when this changes.
+    // What the eyes and the mouth look like; they're repainted only when this changes. Where the
+    // eyes look isn't part of it: the pupils move as layers.
     private struct EyesKey: Equatable {
         var state: CreatureState
         var closed: Bool
-        var lookX: Int, lookY: Int
+        var lid: CGColor
+    }
+
+    /// What the rims of open eyes look like: with sulky lids in their color (nil: no lids), and
+    /// whether the eyes are wide open with fright (falling).
+    private struct RimsKey: Equatable {
+        var lid: CGColor?
+        var wide: Bool
     }
 
     private struct MouthKey: Equatable {
@@ -202,17 +226,26 @@ class GooglyCharacterView: CharacterView {
         var motion: Int
     }
 
-    /// The eyes (with the blush) and the mouth are painted separately, so talking only repaints the mouth.
+    /// The eyes (with the blush) and the mouth are painted separately, so talking only repaints the
+    /// mouth, and following the cursor only moves the pupils.
     private func updateFace(R: CGFloat, look: CGVector, palette: Palette, t: CGFloat) {
-        let eyes = EyesKey(state: state, closed: state == .sleep || time < blinkUntil,
-                           lookX: Int((look.dx * 100).rounded()), lookY: Int((look.dy * 100).rounded()))
+        let eyes = EyesKey(state: state, closed: state == .sleep || time < blinkUntil, lid: palette.lid)
+        let open = !eyes.closed && eyes.state != .happy
         if eyes != shownEyes {
             shownEyes = eyes
-            eyesLayer.repaint(CGRect(x: -R * 0.6, y: -R * 0.25, width: R * 1.2, height: R * 0.65)) { [weak self] ctx in
-                guard let self else { return }
-                drawEyes(ctx, R: R, look: look, palette: palette)
+            let area = CGRect(x: -R * 0.6, y: -R * 0.25, width: R * 1.2, height: R * 0.65)
+            eyesLayer.repaint(area) { [weak self] ctx in
+                self?.drawEyes(ctx, R: R, eyes: eyes)
             }
+            for layer in pupilLayers + [eyeRimsLayer] { layer.isHidden = !open }
+            if open { showOpenEyes(R: R, area: area, eyes: eyes) }
+            shownLook = nil
         }
+        if open && look != shownLook {
+            shownLook = look
+            movePupils(R: R, look: look)
+        }
+
         let motion = mouthMotion(t: t)
         let mouth = MouthKey(state: state, motion: Int((motion * 100).rounded()))
         if mouth != shownMouth {
@@ -294,12 +327,65 @@ class GooglyCharacterView: CharacterView {
         }
     }
 
-    private func drawEyes(_ ctx: CGContext, R: CGFloat, look: CGVector, palette: Palette) {
-        let eyeY = R * 0.1
-        let eyeDX = R * 0.24
-        let eyesClosed = state == .sleep || time < blinkUntil
+    /// The middle of the left (-1) or right (1) eye.
+    private func eyeCenter(side: CGFloat, R: CGFloat) -> CGPoint {
+        CGPoint(x: side * R * 0.24, y: R * 0.1)
+    }
 
+    /// How big open eyes and their pupils are: bigger eyes with smaller pupils when they're wide
+    /// open with fright (falling).
+    private func eyeRadii(R: CGFloat, wide: Bool) -> (eye: CGFloat, pupil: CGFloat) {
+        let eyeR = R * 0.16 * (wide ? 1.25 : 1)
+        return (eyeR, eyeR * (wide ? 0.38 : 0.55))
+    }
+
+    private func eyeRect(side: CGFloat, R: CGFloat, wide: Bool) -> CGRect {
+        let c = eyeCenter(side: side, R: R), eyeR = eyeRadii(R: R, wide: wide).eye
+        return CGRect(x: c.x - eyeR, y: c.y - eyeR * 1.1, width: eyeR * 2, height: eyeR * 2.2)
+    }
+
+    /// Makes the parts of open eyes that stay put while the pupils move, the rims and the pupils'
+    /// picture, unless they're there already (after a blink, or from a mood with the same eyes).
+    private func showOpenEyes(R: CGFloat, area: CGRect, eyes: EyesKey) {
+        let rims = RimsKey(lid: eyes.state == .sulk ? eyes.lid : nil, wide: eyes.state == .fall)
+        if rims != shownRims {
+            shownRims = rims
+            eyeRimsLayer.repaint(area) { [weak self] ctx in
+                self?.drawEyeRims(ctx, R: R, rims: rims)
+            }
+        }
+        let r = eyeRadii(R: R, wide: rims.wide).pupil
+        if r != shownPupilRadius {
+            shownPupilRadius = r
+            let first = pupilLayers[0]
+            first.showPicture(of: CGRect(x: -r - 1, y: -r - 1, width: 2 * r + 2, height: 2 * r + 2), scale: pictureScale) { ctx in
+                Self.drawPupil(ctx, at: .zero, r: r)
+            }
+            for pupil in pupilLayers.dropFirst() {
+                pupil.contents = first.contents
+                pupil.contentsScale = first.contentsScale
+                pupil.bounds = first.bounds
+            }
+            // The picture is a whole number of pixels, so its middle may be a little off the pupil's.
+            pupilOffset = first.position
+        }
+    }
+
+    /// Moves the pupils of open eyes to look along `look`.
+    private func movePupils(R: CGFloat, look: CGVector) {
+        let (eyeR, pupilR) = eyeRadii(R: R, wide: state == .fall)
+        let reach = (eyeR - pupilR) * 0.85
+        for (side, pupil) in zip([-1.0, 1.0] as [CGFloat], pupilLayers) {
+            let c = eyeCenter(side: side, R: R)
+            pupil.position = CGPoint(x: c.x + look.dx * reach + pupilOffset.x, y: c.y + look.dy * reach * 1.1 + pupilOffset.y)
+        }
+    }
+
+    /// What's under the pupils: the blush, and the eye whites (or closed or happy eyes).
+    private func drawEyes(_ ctx: CGContext, R: CGFloat, eyes: EyesKey) {
+        let state = eyes.state
         if [.idle, .walk, .talk, .drag, .happy].contains(state) {
+            let eyeY = eyeCenter(side: 1, R: R).y
             ctx.setFillColor(.hex(0xFF7AB8, alpha: state == .happy ? 0.75 : 0.45))
             for side in [-1.0, 1.0] as [CGFloat] {
                 ctx.fillEllipse(in: CGRect(x: side * R * 0.4 - R * 0.07, y: eyeY - R * 0.24, width: R * 0.14, height: R * 0.08))
@@ -307,13 +393,14 @@ class GooglyCharacterView: CharacterView {
         }
 
         for side in [-1.0, 1.0] as [CGFloat] {
-            let x = side * eyeDX
+            let c = eyeCenter(side: side, R: R)
             if state == .happy {
-                drawHappyEye(ctx, x: x, y: eyeY, r: R * 0.13)
-            } else if eyesClosed {
-                drawClosedEye(ctx, x: x, y: eyeY, r: R * 0.13)
+                drawHappyEye(ctx, x: c.x, y: c.y, r: R * 0.13)
+            } else if eyes.closed {
+                drawClosedEye(ctx, x: c.x, y: c.y, r: R * 0.13)
             } else {
-                drawOpenEye(ctx, x: x, y: eyeY, R: R, look: look, palette: palette)
+                ctx.setFillColor(.white)
+                ctx.fillEllipse(in: eyeRect(side: side, R: R, wide: state == .fall))
             }
         }
     }
@@ -337,42 +424,41 @@ class GooglyCharacterView: CharacterView {
         ctx.strokePath()
     }
 
-    private func drawOpenEye(_ ctx: CGContext, x: CGFloat, y: CGFloat, R: CGFloat, look: CGVector, palette: Palette) {
-        let eyeR = R * 0.16 * (state == .fall ? 1.25 : 1)
-        let eyeRect = CGRect(x: x - eyeR, y: y - eyeR * 1.1, width: eyeR * 2, height: eyeR * 2.2)
-
-        ctx.setFillColor(.white)
-        ctx.fillEllipse(in: eyeRect)
-
-        let pupilR = eyeR * (state == .fall ? 0.38 : 0.55)
-        let reach = (eyeR - pupilR) * 0.85
-        let pupil = CGPoint(x: x + look.dx * reach, y: y + look.dy * reach * 1.1)
-        ctx.setFillColor(Self.ink)
+    /// A pupil with its glint.
+    private static func drawPupil(_ ctx: CGContext, at pupil: CGPoint, r pupilR: CGFloat) {
+        ctx.setFillColor(ink)
         ctx.fillEllipse(in: CGRect(x: pupil.x - pupilR, y: pupil.y - pupilR, width: pupilR * 2, height: pupilR * 2))
         ctx.setFillColor(.white)
         let glint = pupilR * 0.35
         ctx.fillEllipse(in: CGRect(x: pupil.x - pupilR * 0.3 - glint, y: pupil.y + pupilR * 0.35 - glint,
                                    width: glint * 2, height: glint * 2))
+    }
 
-        if state == .sulk {
-            // Heavy, unimpressed eyelids.
-            ctx.saveGState()
-            ctx.addEllipse(in: eyeRect)
-            ctx.clip()
-            ctx.setFillColor(palette.lid)
-            ctx.fill(CGRect(x: eyeRect.minX, y: y + eyeR * 0.05, width: eyeRect.width, height: eyeRect.height))
-            ctx.restoreGState()
-            ctx.move(to: CGPoint(x: eyeRect.minX, y: y + eyeR * 0.05))
-            ctx.addLine(to: CGPoint(x: eyeRect.maxX, y: y + eyeR * 0.05))
-            ctx.setStrokeColor(Self.ink)
-            ctx.setLineWidth(1.5)
+    /// What's over the pupils of open eyes: sulky eyelids, and the rims.
+    private func drawEyeRims(_ ctx: CGContext, R: CGFloat, rims: RimsKey) {
+        for side in [-1.0, 1.0] as [CGFloat] {
+            let white = eyeRect(side: side, R: R, wide: rims.wide)
+            if let lid = rims.lid {
+                // Heavy, unimpressed eyelids.
+                let lidY = eyeCenter(side: side, R: R).y + eyeRadii(R: R, wide: rims.wide).eye * 0.05
+                ctx.saveGState()
+                ctx.addEllipse(in: white)
+                ctx.clip()
+                ctx.setFillColor(lid)
+                ctx.fill(CGRect(x: white.minX, y: lidY, width: white.width, height: white.height))
+                ctx.restoreGState()
+                ctx.move(to: CGPoint(x: white.minX, y: lidY))
+                ctx.addLine(to: CGPoint(x: white.maxX, y: lidY))
+                ctx.setStrokeColor(Self.ink)
+                ctx.setLineWidth(1.5)
+                ctx.strokePath()
+            }
+
+            ctx.addEllipse(in: white)
+            ctx.setStrokeColor(.hex(0x22143A, alpha: 0.3))
+            ctx.setLineWidth(1)
             ctx.strokePath()
         }
-
-        ctx.addEllipse(in: eyeRect)
-        ctx.setStrokeColor(.hex(0x22143A, alpha: 0.3))
-        ctx.setLineWidth(1)
-        ctx.strokePath()
     }
 
     /// How far the mouth is open (talking) or how big it is (snoring): the only part of the face

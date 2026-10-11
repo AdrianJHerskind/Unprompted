@@ -449,9 +449,10 @@ final class Creature {
     }
 
     /// Calm poses change slowly, so updating them less often than every frame saves work without
-    /// anyone noticing: each update hands Core Animation new layer properties and repaints whatever
-    /// moved (a talking mouth, the Z's, a ghost's waving body). Talking counts as calm: it stands
-    /// still for it. Each is a whole number of 60 Hz frames, so updates stay evenly spaced.
+    /// anyone noticing: each update hands Core Animation new layer properties (new paths for a
+    /// ghost's waving hem) and repaints whatever moved (a talking mouth, the Z's). Talking counts
+    /// as calm: it stands still for it. Each is a whole number of 60 Hz frames, so updates stay
+    /// evenly spaced.
     private func updateInterval(for state: CreatureState) -> TimeInterval {
         switch state {
         // Fewer still once it's been asleep for a while: you've probably gone.

@@ -47,15 +47,18 @@ final class GhostView: GooglyCharacterView {
 
     override var twinkleColor: CGColor { CGColor(srgbRed: 0.75, green: 0.83, blue: 1, alpha: 0.8) }
 
-    override func bodyGlow(for palette: Palette) -> Glow? {
-        Glow(color: palette.glow, radius: 5.5)
+    override func makeLayeredBody(R: CGFloat, scale: CGFloat) -> LayeredBody? {
+        GhostBody(R: R, scale: scale)
     }
 
-    override func drawBody(_ ctx: CGContext, R: CGFloat, palette: Palette, t: CGFloat) {
+    /// Where the gradient ends; the hem's lobes hang below it.
+    fileprivate static func hemY(R: CGFloat) -> CGFloat { -R * 0.8 }
+
+    /// The body's outline, and the body with its arms, centered on the origin with radius `R`.
+    fileprivate static func shapes(state: CreatureState, R: CGFloat, t: CGFloat) -> (body: CGPath, bodyAndArms: CGPath) {
         let w = R * 0.82                // half width
         let domeCenter = R * 0.95 - w
-        let hemY = -R * 0.8
-        let notchY = hemY + R * 0.06    // where the hem's lobes meet
+        let notchY = hemY(R: R) + R * 0.06 // where the hem's lobes meet
         let waveSpeed: CGFloat = state == .sleep ? 1.5 : (state == .walk || state == .fall ? 7 : 4)
 
         // Little arms, raised in alarm when falling or dragged, waving when talking or happy.
@@ -84,31 +87,72 @@ final class GhostView: GooglyCharacterView {
         }
         body.closeSubpath()
 
-        // Body and arms as one shape, so all of it is evenly see-through without a transparency
-        // layer. The arms wind the same way as the body; otherwise where they overlap would be a hole.
-        let shape = CGMutablePath()
-        shape.addPath(body)
+        // Body and arms as one shape, so all of it is evenly see-through. The arms wind the same
+        // way as the body; otherwise where they overlap would be a hole.
+        let bodyAndArms = CGMutablePath()
+        bodyAndArms.addPath(body)
         for side in [-1.0, 1.0] as [CGFloat] {
             let arm = CGRect(x: side * w - R * 0.16, y: -R * 0.2 + armLift, width: R * 0.32, height: R * 0.2)
             let toArm = CGAffineTransform(translationX: arm.midX, y: arm.midY).scaledBy(x: arm.width / 2, y: arm.height / 2)
-            shape.move(to: CGPoint(x: -1, y: 0), transform: toArm)
-            shape.addArc(center: .zero, radius: 1, startAngle: .pi, endAngle: -.pi, clockwise: true, transform: toArm)
-            shape.closeSubpath()
+            bodyAndArms.move(to: CGPoint(x: -1, y: 0), transform: toArm)
+            bodyAndArms.addArc(center: .zero, radius: 1, startAngle: .pi, endAngle: -.pi, clockwise: true, transform: toArm)
+            bodyAndArms.closeSubpath()
         }
+        return (body, bodyAndArms)
+    }
+}
 
-        ctx.saveGState()
+/// The ghost as layers: the palette's gradient cut to the shape of the body and arms, the outline
+/// on top, and a glow from a shadow path. The window server fills, strokes and blurs them on the
+/// GPU, so the waving hem and arms only cost new paths for every update, and nothing is painted.
+private final class GhostBody: LayeredBody {
+    let layer = CALayer()
+    private let fill = CAGradientLayer()
+    private let cutout = CAShapeLayer()
+    private let outline = CAShapeLayer()
+    private let R: CGFloat
+    /// What the gradient covers, in body coordinates: the body and arms with room to spare.
+    private let area: CGRect
+    private var shownGradient: CGGradient?
+
+    init(R: CGFloat, scale: CGFloat) {
+        self.R = R
+        area = CGRect(x: -R * 1.1, y: -R * 1.3, width: R * 2.2, height: R * 2.4)
         // Just a little see-through, so a little of the glow behind it shows through too.
-        ctx.setAlpha(0.9)
-        ctx.addPath(shape)
-        ctx.clip()
-        // Extend past both ends so the hem's lobes (below `hemY`) get filled too.
-        ctx.drawLinearGradient(palette.gradient, start: CGPoint(x: 0, y: R), end: CGPoint(x: 0, y: hemY),
-                               options: [.drawsBeforeStartLocation, .drawsAfterEndLocation])
-        ctx.restoreGState()
+        fill.opacity = 0.9
+        fill.frame = area
+        // From the top of the dome down to the hem. The end colors carry on past both ends, so the
+        // hem's lobes are filled too.
+        fill.startPoint = CGPoint(x: 0.5, y: (R - area.minY) / area.height)
+        fill.endPoint = CGPoint(x: 0.5, y: (GhostView.hemY(R: R) - area.minY) / area.height)
+        fill.locations = [0, 0.5, 1]
+        cutout.frame = CGRect(origin: .zero, size: area.size)
+        cutout.fillColor = .black
+        cutout.contentsScale = scale
+        fill.mask = cutout
+        outline.fillColor = nil
+        outline.strokeColor = .hex(0xAEB4D6, alpha: 0.8)
+        outline.lineWidth = 1.2
+        outline.contentsScale = scale
+        // At full strength, although the fill is a little see-through: the glow spreads from the
+        // edge, where the outline makes the body nearly opaque.
+        layer.shadowOpacity = 1
+        layer.shadowRadius = 5.5
+        layer.shadowOffset = .zero
+        layer.addSublayer(fill)
+        layer.addSublayer(outline)
+    }
 
-        ctx.addPath(body)
-        ctx.setStrokeColor(.hex(0xAEB4D6, alpha: 0.8))
-        ctx.setLineWidth(1.2)
-        ctx.strokePath()
+    func update(state: CreatureState, palette: GooglyCharacterView.Palette, t: CGFloat) {
+        if palette.gradient !== shownGradient {
+            shownGradient = palette.gradient
+            fill.colors = palette.colors
+            layer.shadowColor = palette.glow
+        }
+        let shapes = GhostView.shapes(state: state, R: R, t: t)
+        var toCutout = CGAffineTransform(translationX: -area.minX, y: -area.minY)
+        cutout.path = shapes.bodyAndArms.copy(using: &toCutout)
+        outline.path = shapes.body
+        layer.shadowPath = shapes.bodyAndArms
     }
 }
