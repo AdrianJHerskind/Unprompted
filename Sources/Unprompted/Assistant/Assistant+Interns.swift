@@ -51,7 +51,7 @@ extension Assistant {
 
     /// Interns keep quiet when the main one has to, unless they're replying to you (`force`).
     private func internSay(_ line: String, _ intern: Intern, force: Bool = false) {
-        guard !isHidden, force || quiet == nil else { return }
+        guard !isHidden, force || quiet == nil, !intern.bubble.isBeingRead else { return }
         intern.bubble.say(line, think: false, near: intern.creature.bodyFrame)
     }
 
@@ -60,7 +60,7 @@ extension Assistant {
         switch event {
         case .clicked:
             removeIntern(mini, poof: true)
-            say(pick(Quips.internPopped), force: true)
+            react(pick(Quips.internPopped))
         case .pickedUp:
             internSay(pick(Quips.internPickedUp), intern, force: true)
         case .thrown:
@@ -73,7 +73,7 @@ extension Assistant {
             removeIntern(mini, poof: false)
             after(0.5) { [weak self] in
                 guard let self else { return }
-                self.say(self.pick(Quips.internDeleted), force: true)
+                self.react(self.pick(Quips.internDeleted))
             }
         default:
             break

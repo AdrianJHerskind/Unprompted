@@ -9,12 +9,12 @@ extension Assistant {
             noteInteraction()
             stats.record(\.pickups)
             if cheerUpIfSulking() { return }
-            if Double.random(in: 0..<1) < 0.7 { say(pick(Quips.pickedUp), force: true) }
+            if Double.random(in: 0..<1) < 0.7 { react(pick(Quips.pickedUp)) }
         case .thrown:
             stats.record(\.throwsCount)
-            say(pick(Quips.thrown), force: true)
+            react(pick(Quips.thrown))
         case .dropped:
-            if Double.random(in: 0..<1) < 0.35 { say(pick(Quips.dropped), force: true) }
+            if Double.random(in: 0..<1) < 0.35 { react(pick(Quips.dropped)) }
         case .landedHard:
             // Its own entrances (start, resurrection, "Come Here") aren't your fault and
             // shouldn't drown out what it's saying.
@@ -22,7 +22,7 @@ extension Assistant {
             changeMood(by: -3)
             after(0.4) { [weak self] in
                 guard let self else { return }
-                self.say(self.pick(Quips.landedHard), force: true)
+                self.react(self.pick(Quips.landedHard))
             }
         case .clicked(let event):
             noteInteraction()
@@ -33,7 +33,7 @@ extension Assistant {
             guard Date().timeIntervalSince(lastFileHoverRemark) > 6 else { return }
             lastFileHoverRemark = Date()
             creature.stopSulking()
-            say(pick(Quips.fileHover), force: true)
+            react(pick(Quips.fileHover))
         case .filesDropped(let urls):
             noteInteraction()
             changeMood(by: 3)
@@ -44,17 +44,17 @@ extension Assistant {
             stats.record(\.fetches)
             changeMood(by: 4)
             effects.hearts(at: creature.headTop)
-            say(pick(Quips.fetched), force: true)
+            react(pick(Quips.fetched))
         case .caughtCursor:
             changeMood(by: 2)
-            say(pick(Quips.caughtCursor), force: true)
+            react(pick(Quips.caughtCursor))
         case .shakenOff:
             changeMood(by: -1)
-            say(pick(Quips.shakenOff), force: true)
+            react(pick(Quips.shakenOff))
         case .slipped:
             guard Date().timeIntervalSince(lastHangRemark) > 8 else { return }
             lastHangRemark = Date()
-            say(pick(Quips.slipped), force: true)
+            react(pick(Quips.slipped))
         // Things it does on its own get remarks only when it's free to chat.
         case .startedHanging:
             guard Date().timeIntervalSince(lastHangRemark) > 20, Double.random(in: 0..<1) < 0.6 else { return }
@@ -115,7 +115,7 @@ extension Assistant {
         }
         if remark, !creature.isSleeping, Date().timeIntervalSince(lastPetRemark) > 10 {
             lastPetRemark = Date()
-            say(pick(Quips.petted), force: true)
+            react(pick(Quips.petted))
         }
     }
 

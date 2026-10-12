@@ -23,6 +23,8 @@ final class SpeechBubble {
     private var thinkingUntil: TimeInterval = 0
     private var thinkingLabel = ""
     private var hideAt: TimeInterval = .infinity
+    /// When the text had been "typed" out, or nil while it's still thinking or typing.
+    private var typedAt: TimeInterval?
     private var now: TimeInterval = 0
     /// What's currently drawn, so the view is only updated when something changed.
     private var rendered: (thinking: Bool, dots: Int, revealed: Int)?
@@ -49,6 +51,7 @@ final class SpeechBubble {
         thinkingLabel = label
         thinkingUntil = .infinity
         hideAt = .infinity
+        typedAt = nil
         isSticky = false
         buttons = []
         onChoice = nil
@@ -79,7 +82,16 @@ final class SpeechBubble {
         thinkingLabel = "✨ " + (Self.thinkingLabels.randomElement() ?? "Thinking")
         thinkingUntil = think ? now + .random(in: 1.5...3.5) : now
         hideAt = .infinity
+        typedAt = nil
         present(fullText: text, near: anchor)
+    }
+
+    /// Still being read: thinking, typing, or not up long enough to have been read, about as long
+    /// as reading it takes at an unhurried pace. Sticky ones are read until they're clicked away.
+    var isBeingRead: Bool {
+        guard isShowing else { return false }
+        guard let typedAt else { return true }
+        return isSticky || now < typedAt + min(8, 1.5 + Double(fullLength) * 0.05)
     }
 
     func hide() {
@@ -97,9 +109,10 @@ final class SpeechBubble {
         if now >= thinkingUntil, revealed < tokens.count, now >= nextTokenAt {
             revealed += 1
             nextTokenAt = now + .random(in: 0.03...0.11)
-            if revealed == tokens.count && !isSticky {
+            if revealed == tokens.count {
+                typedAt = now
                 // Time to read, and much longer when there are buttons to click.
-                hideAt = now + (buttons.isEmpty ? 2.5 + Double(fullLength) * 0.045 : 25)
+                if !isSticky { hideAt = now + (buttons.isEmpty ? 2.5 + Double(fullLength) * 0.045 : 25) }
             }
         }
         if now >= hideAt {

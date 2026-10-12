@@ -19,6 +19,19 @@ extension Assistant {
         bubble.say(fill(line), think: think, near: creature.bodyFrame, sticky: sticky)
     }
 
+    /// A quick reaction to something that just happened (picked up, thrown, petted…), left out
+    /// rather than cutting off a line that's still being read.
+    func react(_ line: String) {
+        guard !bubble.isBeingRead else { return }
+        say(line, force: true)
+    }
+
+    /// Runs `action` once the current line has been read, or after `maxWait` seconds at the latest.
+    func afterBubbleIsRead(maxWait: TimeInterval = 15, _ action: @escaping @MainActor () -> Void) {
+        guard bubble.isBeingRead, maxWait > 0 else { return action() }
+        after(0.5) { [weak self] in self?.afterBubbleIsRead(maxWait: maxWait - 0.5, action) }
+    }
+
     /// Whether a line may be shown now: never while it's hidden or being deleted.
     private func mayTalk(force: Bool) -> Bool {
         !isHidden && !creature.isDying && (force || canTalk)

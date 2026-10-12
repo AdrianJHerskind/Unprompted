@@ -61,6 +61,11 @@ extension Assistant {
     /// A reminder is due: it shows up wherever it was (snoozing, hidden, in the trash), and the
     /// bubble stays until you've seen it.
     func deliverReminder(_ message: String) {
+        // Not over a line that's still being read: a reminder can wait a few seconds.
+        afterBubbleIsRead { [weak self] in self?.showReminder(message) }
+    }
+
+    private func showReminder(_ message: String) {
         let wasSnoozed = snoozedUntil != nil
         snoozedUntil = nil
         if wasSnoozed || creature.isDying { dropIn() } // even mid-way into the trash
