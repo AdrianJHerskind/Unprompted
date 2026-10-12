@@ -16,7 +16,7 @@ It's a parody of AI assistants, with a few genuinely useful tricks. It runs enti
 - **Climbing and exploring**: it climbs the sides of windows, dangles from window edges, peeks in from the screen edge, and walks between screens, climbing up to higher ones and walking off one side to come back in on the other.
 - **Wandering**: too restless for you? Set **Wandering** to **Now and then**, or to **Stays put**: then it walks off to a corner of the screen, out of your way, and stays there, still breathing, blinking and looking around. Playing with it and **Come Here** still work.
 - **Drag and throw**: pick it up and fling it. It has opinions about this. Throw it and it runs back for another go (fetch). Sometimes it chases your cursor.
-- **The Trash**: while you carry it, a trash can appears in the corner. Drop it in and it's deleted, dramatically, then comes back from "the cloud". **Use Real Dock Trash** aims for the Dock's Trash instead.
+- **The Trash**: lift it up while you carry it and a trash can appears in the corner. Drop it in and it's deleted, dramatically, then comes back from "the cloud". Carried along low, you can put it down in that corner without throwing it away. **Use Real Dock Trash** aims for the Dock's Trash instead.
 - **Petting and mood**: wiggle the cursor over it and it purrs and shows hearts. Its mood rises when you're nice to it and falls when you're not; happy assistants play more, sad ones mope.
 - **Interns**: ignore it long enough and it hires a smaller helper. Paying attention sends the interns home; clicking one pops it.
 - **Costumes and time of day**: a pumpkin in October, a Santa hat in December, a party hat on New Year's Day, a nightcap late at night and a coffee mug in the morning.

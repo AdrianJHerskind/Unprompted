@@ -7,6 +7,8 @@ final class TrashCan {
     private let panel = OverlayPanel(size: NSSize(width: 86, height: 86))
     private let view = TrashCanView(frame: NSRect(x: 0, y: 0, width: 86, height: 86))
     private var visibleUntil: TimeInterval = 0
+    /// Whether the carried creature is held up above the can (see `update`).
+    private var lifted = false
     private var dockTrashCache: (rect: CGRect?, time: TimeInterval) = (nil, -10)
 
     init() {
@@ -15,12 +17,17 @@ final class TrashCan {
     }
 
     /// Call every frame with the creature that's being carried or was just thrown, if any. The trash
-    /// can shows (on that creature's screen) while it's carried and for a moment after. Returns the
-    /// current target in screen coordinates. The Dock is only asked for its Trash while it matters.
+    /// can shows (on that creature's screen) while it's carried higher than the can, and for a moment
+    /// after it's let go from up there. Carried along low, it can be put down in the corner without
+    /// being thrown away. Returns the current target in screen coordinates. The Dock is only asked
+    /// for its Trash while it matters.
     func update(focus: Creature?, useDockTrash: Bool, now: TimeInterval) -> CGRect? {
-        if let focus, focus.isDragging {
-            visibleUntil = now + 1.5
-            if let screen = NSScreen.nearest(to: focus.center) { place(on: screen) }
+        if let focus, focus.isDragging, let screen = NSScreen.nearest(to: focus.center) {
+            place(on: screen)
+            // A little leeway either way, so it doesn't flicker when held right at the can's height.
+            let feet = focus.frame.minY + focus.footInset
+            lifted = feet > panel.frame.maxY + (lifted ? -8 : 8)
+            visibleUntil = lifted ? now + 1.5 : 0
         }
         guard focus != nil || now < visibleUntil else {
             hide()
@@ -60,6 +67,7 @@ final class TrashCan {
 
     func hide() {
         visibleUntil = 0
+        lifted = false
         if panel.isVisible { panel.orderOut(nil) }
         setHighlighted(false)
     }
