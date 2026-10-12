@@ -13,7 +13,7 @@ It's a parody of AI assistants, with a few genuinely useful tricks. It runs enti
 
 - **Above everything**: it floats over windows, the menu bar and the Dock, on every Space and over full-screen apps. Clicks on transparent areas go through to whatever is underneath.
 - **Physics**: it walks, jumps and falls, lands on the tops of other windows and rides along when you move them. Close the window and it falls.
-- **Climbing and exploring**: it climbs the sides of windows, dangles from window edges, peeks in from the screen edge, and walks between screens, climbing up to higher ones and walking off one side to come back in on the other.
+- **Climbing and exploring**: it climbs the sides of windows, dangles from window edges, peeks in from the screen edge, sneaks behind your windows to peek out from behind them, and walks between screens, climbing up to higher ones and walking off one side to come back in on the other.
 - **Wandering**: too restless for you? Set **Wandering** to **Now and then**, or to **Stays put**: then it walks off to a corner of the screen, out of your way, and stays there, still breathing, blinking and looking around. Playing with it and **Come Here** still work.
 - **Drag and throw**: pick it up and fling it. It has opinions about this. Throw it and it runs back for another go (fetch). Sometimes it chases your cursor.
 - **The Trash**: lift it up while you carry it and a trash can appears in the corner. Drop it in and it's deleted, dramatically, then comes back from "the cloud". Carried along low, you can put it down in that corner without throwing it away. **Use Real Dock Trash** aims for the Dock's Trash instead.

@@ -36,6 +36,7 @@ extension Creature {
     private func walk(_ dt: CGFloat, centerX: CGFloat, feetY: CGFloat) {
         switch activity {
         case .peek: return updatePeek(dt, centerX: centerX)
+        case .sneak: return updateSneak(dt, centerX: centerX)
         case .wrap: return updateWrap(dt, centerX: centerX)
         default: break
         }

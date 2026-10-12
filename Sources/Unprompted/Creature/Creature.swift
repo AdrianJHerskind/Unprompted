@@ -40,6 +40,9 @@ final class Creature {
         /// Dangling from a window's top corner. `dir` is the direction it walked off in.
         case hang(windowID: Int, dir: CGFloat, until: TimeInterval)
         case peek(phase: PeekPhase, edgeX: CGFloat, dir: CGFloat, until: TimeInterval)
+        /// Slipping behind another app's window through its side edge at `edgeX` (`dir` points
+        /// into the window), peeking out, then back out or on through to its far side.
+        case sneak(windowID: Int, edgeX: CGFloat, dir: CGFloat, phase: SneakPhase, until: TimeInterval)
         /// Getting out of the way, to a corner at `targetX`, then turning to face `inward`.
         case retreat(targetX: CGFloat, inward: CGFloat, until: TimeInterval)
         /// Climbing the step up to a higher neighboring screen, at boundary `x`, up to `top`.
@@ -51,6 +54,8 @@ final class Creature {
     }
 
     enum PeekPhase { case approach, peeking, returning }
+    /// Walking up to the window (in front of it), then behind it: going in, peeking, and out.
+    enum SneakPhase { case approach, entering, peeking, back, through }
 
     static let gravity: CGFloat = 2200
     /// Upward speed of each little hop for hopping characters.
@@ -96,6 +101,8 @@ final class Creature {
     private var lastApplied: CGPoint?
     /// Where the character view sits inside the stage.
     private var viewOrigin: CGPoint = .zero
+    /// The window it's behind while sneaking (see `updateStageOrder`).
+    private var behindWindow: Int?
     /// The screen the stage was placed on, or nil when it needs to be placed again.
     private var stageScreen: NSScreen?
     private var viewTransform: (rotation: CGFloat, zoom: CGFloat) = (0, 1)
@@ -426,6 +433,7 @@ final class Creature {
         // Walking around the screens or back from a peek doesn't stop for talking or sulking.
         view.updateInterval = dx == 0 ? updateInterval(for: state) : 0
         view.advance(by: dt)
+        updateStageOrder()
         apply()
     }
 
@@ -541,7 +549,30 @@ final class Creature {
     func updateStageVisibility() {
         let visible = !isHidden && !isRemoved && !isDead
         guard visible != stage.isVisible else { return }
-        if visible { stage.orderFrontRegardless() } else { stage.orderOut(nil) }
+        if visible {
+            stage.orderFrontRegardless()
+        } else {
+            // Back out in front when it comes back.
+            if case .sneak = activity { activity = .wander }
+            updateStageOrder()
+            stage.orderOut(nil)
+        }
+    }
+
+    /// While it's behind a window (sneaking), the stage sits just below that window, so the window
+    /// hides whatever part of it overlaps; otherwise it's above everything.
+    private func updateStageOrder() {
+        var wanted: Int?
+        if case .sneak(let id, _, _, let phase, _) = activity, phase != .approach { wanted = id }
+        guard wanted != behindWindow else { return }
+        behindWindow = wanted
+        if let wanted {
+            stage.level = .normal
+            if stage.isVisible { stage.order(.below, relativeTo: wanted) }
+        } else {
+            stage.level = .assistant
+            if stage.isVisible { stage.orderFrontRegardless() }
+        }
     }
 
     // MARK: - Mouse
@@ -652,6 +683,7 @@ final class Creature {
         case .hang: return "Hanging on for dear life"
         case .peek: return "Peeking from the edge"
         case .retreat: return "Getting out of your way"
+        case .sneak(_, _, _, let phase, _): return phase == .peeking ? "Peeking from behind a window" : "Sneaking behind a window"
         case .wrap: return "Taking a shortcut around the screens"
         case .approachClimb: return "Heading for a window to climb"
         case .chase: return "Chasing your cursor"

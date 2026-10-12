@@ -15,7 +15,7 @@ enum Wandering: String, CaseIterable {
 }
 
 /// What the creature gets up to on its own: wandering, fetch, chasing the cursor, climbing and
-/// hanging from windows, peeking from the screen edge, and being deleted.
+/// hanging from windows, peeking from the screen edge and from behind windows, and being deleted.
 extension Creature {
     /// Decides where to walk while standing on something.
     func steer(centerX: CGFloat, feetY: CGFloat) {
@@ -124,6 +124,8 @@ extension Creature {
         roll -= 0.07 * outings
         if roll < 0.04 * outings, startPeek(centerX: centerX, feetY: feetY) { return }
         roll -= 0.04 * outings
+        if roll < 0.05 * outings, startSneak(centerX: centerX, feetY: feetY) { return }
+        roll -= 0.05 * outings
         if roll < 0.06 * outings {
             let dir: CGFloat = walkDirection != 0 ? walkDirection : (Bool.random() ? 1 : -1)
             leap(dx: dir * .random(in: 80...220), dy: .random(in: 600...1100))
@@ -148,7 +150,7 @@ extension Creature {
         case .wander:
             walkDirection = 0
             behaviorUntil = now
-        case .approachClimb:
+        case .approachClimb, .sneak:
             endActivity()
         case .retreat where wandering != .still:
             endActivity()
@@ -335,6 +337,86 @@ extension Creature {
                 facingRight = dir < 0
                 position.x -= dir * walkSpeed * dt
             }
+        }
+    }
+
+    // MARK: Sneaking behind windows
+
+    /// Finds a window nearby on its screen's floor that reaches down over most of it, with a side
+    /// edge it can see and walk to, and heads there to slip behind it.
+    private func startSneak(centerX: CGFloat, feetY: CGFloat) -> Bool {
+        guard groundWindow == nil, let screen = world.screen(at: CGPoint(x: centerX, y: feetY + 5)) else { return false }
+        let visible = world.visibleFrame(of: screen)
+        var best: (id: Int, edgeX: CGFloat, dir: CGFloat, distance: CGFloat)?
+        for w in world.windows {
+            let f = w.frame
+            guard f.minY <= feetY + size.height * 0.35, f.maxY >= feetY + size.height else { continue }
+            for leftEdge in [true, false] {
+                let edgeX = leftEdge ? f.minX : f.maxX
+                let dir: CGFloat = leftEdge ? 1 : -1 // into the window
+                // From outside the window, with room to come back out on this side.
+                let distance = (edgeX - centerX) * dir
+                guard distance > size.width * 0.4, distance < 500, distance < (best?.distance ?? .infinity),
+                      edgeX > visible.minX + size.width, edgeX < visible.maxX - size.width,
+                      world.edgeVisibility(ofWindow: w.id, leftEdge: leftEdge, from: max(feetY, f.minY),
+                                           to: min(f.maxY, feetY + size.height)) >= 0.9 else { continue }
+                best = (w.id, edgeX, dir, distance)
+            }
+        }
+        guard let best else { return false }
+        activity = .sneak(windowID: best.id, edgeX: best.edgeX, dir: best.dir, phase: .approach, until: now + 12)
+        return true
+    }
+
+    func updateSneak(_ dt: CGFloat, centerX: CGFloat) {
+        guard case .sneak(let id, let edgeX, let dir, let phase, let until) = activity else { return }
+        // If the window goes away or moves, it's simply back out in front.
+        guard let f = world.liveFrame(ofWindow: id), abs((dir > 0 ? f.minX : f.maxX) - edgeX) < 2 else { return endActivity() }
+        let farEdgeX = dir > 0 ? f.maxX : f.minX
+        func step(_ d: CGFloat) {
+            guard canWalk else { walkDirection = 0; return }
+            walkDirection = d
+            facingRight = d > 0
+            position.x += d * walkSpeed * dt
+        }
+        func next(_ phase: SneakPhase, for seconds: TimeInterval) {
+            activity = .sneak(windowID: id, edgeX: edgeX, dir: dir, phase: phase, until: now + seconds)
+        }
+        switch phase {
+        case .approach:
+            // Behind the window as soon as its front touches the edge.
+            if (edgeX - centerX) * dir <= size.width * 0.35 { return next(.entering, for: 6) }
+            if now > until { return endActivity() }
+            step(dir)
+        case .entering:
+            if (centerX - edgeX) * dir >= size.width * 0.05 {
+                walkDirection = 0
+                facingRight = dir < 0 // looking back out
+                next(.peeking, for: .random(in: 2...4))
+                onEvent?(.peeking)
+            } else if now > until {
+                endActivity()
+            } else {
+                step(dir)
+            }
+        case .peeking:
+            walkDirection = 0
+            facingRight = dir < 0
+            guard now > until else { return }
+            // On through and out of the far side when there's room for it there, and the window
+            // isn't so wide that it would be gone for ages.
+            let out = farEdgeX + dir * size.width * 0.7
+            let roomBeyond = world.screen(at: CGPoint(x: centerX, y: position.y + footInset + 5)).map { screen in
+                let visible = world.visibleFrame(of: screen)
+                return out > visible.minX + size.width / 2 && out < visible.maxX - size.width / 2
+            } ?? false
+            next(roomBeyond && abs(farEdgeX - edgeX) < 900 && Bool.random() ? .through : .back, for: 15)
+        case .back:
+            if (edgeX - centerX) * dir >= size.width * 0.6 || now > until { return endActivity() }
+            step(-dir)
+        case .through:
+            if (centerX - farEdgeX) * dir >= size.width * 0.6 || now > until { return endActivity() }
+            step(dir)
         }
     }
 
