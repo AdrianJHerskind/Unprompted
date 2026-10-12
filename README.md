@@ -32,7 +32,7 @@ It's a parody of AI assistants, with a few genuinely useful tricks. It runs enti
 
 ### It (mostly) knows when to stop
 
-- **Quiet mode**: during calls (Zoom, Teams, FaceTime, Webex) and when an app is full screen (presentations, videos), it hides or just stays silent. Optional quiet hours.
+- **Quiet mode**: during calls (Zoom, Teams, FaceTime, Webex, and anything else using your microphone, like a call in a chat app or the browser) and when an app is full screen (presentations, videos), it hides or just stays silent. Optional quiet hours.
 - **Annoyance Level**: Polite, Eager, Clingy or Unhinged.
 - **Snooze for 1 Hour**, sulking when you dismiss it twice in a row, and sleeping while you're away.
 - **Settings window** (✨ menu → **Settings…**): character, movement, wandering, costume, size, speed, chattiness, feature toggles, quiet mode and launch at login.
@@ -59,6 +59,7 @@ It's meant to be annoying, not creepy:
 
 - It needs no permissions. Window *positions* are readable without Screen Recording access; it never reads window contents or titles.
 - It counts key presses for the daily report, but never sees which keys.
+- To notice calls in any app, it asks macOS whether some app is using the microphone. It never uses the microphone itself or hears anything.
 - It reads the clipboard only when you pick a rewrite, and files only when you hand them over.
 - Nothing leaves your Mac. It makes no network requests; links and searches you ask for open in your browser.
 - Its settings and seven days of daily statistics are stored locally in its preferences.

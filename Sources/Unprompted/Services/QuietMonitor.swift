@@ -20,6 +20,9 @@ final class QuietMonitor {
     /// and quitting are followed as it happens: asking every running app for its name takes 10-20 ms.
     private var zoomMeetingHelpers: Set<pid_t> = []
     private var appsObservation: NSKeyValueObservation?
+    /// From the last microphone check, which runs in the background (see `checkMicrophone`).
+    private var microphoneInUse = false
+    private var checkingMicrophone = false
 
     init() {
         appsObservation = NSWorkspace.shared.observe(\.runningApplications, options: [.initial, .old, .new]) { [weak self] _, change in
@@ -50,10 +53,28 @@ final class QuietMonitor {
         let frontmost = NSWorkspace.shared.frontmostApplication
         if let id = frontmost?.bundleIdentifier, Self.callApps.contains(id) { return "you're on a call" }
         if !zoomMeetingHelpers.isEmpty { return "you're in a Zoom meeting" }
+        // Calls in apps that do more than calls (chat apps, browsers) only show in the microphone.
+        checkMicrophone()
+        if microphoneInUse { return "you're on a call" }
         if let pid = frontmost?.processIdentifier, pid != ProcessInfo.processInfo.processIdentifier,
            world.hasFullScreenWindow(ownedBy: Int(pid)) {
             return "something is full screen"
         }
         return nil
+    }
+
+    /// Updates `microphoneInUse` in the background, for the next time it's needed.
+    private func checkMicrophone() {
+        guard !checkingMicrophone else { return }
+        checkingMicrophone = true
+        DispatchQueue.global(qos: .utility).async {
+            let inUse = SystemInfo.isMicrophoneInUse()
+            DispatchQueue.main.async { [weak self] in
+                MainActor.assumeIsolated {
+                    self?.microphoneInUse = inUse
+                    self?.checkingMicrophone = false
+                }
+            }
+        }
     }
 }

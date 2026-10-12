@@ -85,7 +85,7 @@ struct SettingsView: View {
             } header: {
                 Text("Quiet")
             } footer: {
-                Text("Calls are Zoom, Teams, FaceTime and Webex. Full screen covers presentations and videos. During quiet hours it stays but doesn't speak unless you talk to it.")
+                Text("Calls are Zoom, Teams, FaceTime and Webex, and any app using the microphone, like a call in a chat app or the browser. Full screen covers presentations and videos. During quiet hours it stays but doesn't speak unless you talk to it.")
                     .foregroundStyle(.secondary)
             }
 
