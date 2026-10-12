@@ -526,6 +526,7 @@ final class Creature {
     /// Extra rotation of the body, for rolling and waddling.
     func setBodySpin(_ angle: CGFloat) {
         view.spin = angle
+        view.spinIsRoll = movement == .roll
     }
 
     /// Hides the window once it's dead (after the trash animation) or removed.

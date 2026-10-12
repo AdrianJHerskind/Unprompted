@@ -23,7 +23,7 @@ enum CharacterLibrary {
     }
 
     static func loadAll() -> [CharacterPack] {
-        var packs: [CharacterPack] = [SparklePack(), CookieBannerPack(), GhostPack()]
+        var packs: [CharacterPack] = [SparklePack(), CookieBannerPack(), GhostPack(), SpinnerPack()]
         if let local = NSClassFromString("LocalCharacters") as? LocalCharacterSource.Type {
             packs += local.makePacks()
         }

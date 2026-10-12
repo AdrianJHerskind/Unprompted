@@ -70,10 +70,11 @@ Looks are separate from behavior. Switch them in the ✨ menu (**Character**) or
 | **Sparkle** | A googly-eyed ✨ that follows your cursor with its eyes. Drawn in code |
 | **Cookie Banner** | A "We use cookies" banner on little legs, with Reject/Accept buttons that react to its mood. Drawn in code |
 | **Ghost** | A slightly see-through ghost with a waving hem that floats instead of walking. Drawn in code |
+| **Loading Spinner** | A googly-eyed loading spinner that rolls everywhere and spins faster while it "thinks". Drawn in code |
 | **Rubber Duck** | Pixel art. In the chat it does real rubber-duck debugging and answers with questions that help you explain your bug |
 | **Mr. Byte** | Frame-by-frame pixel art of a retro beige computer with legs |
 
-Each has its own gait: **walk** (Mr. Byte, Cookie Banner), **waddle** (Rubber Duck), **hop** (Sparkle) or **float** (Ghost); there's also **roll**. Override it for any character under **Movement**.
+Each has its own gait: **walk** (Mr. Byte, Cookie Banner), **waddle** (Rubber Duck), **hop** (Sparkle), **float** (Ghost) or **roll** (Loading Spinner). Override it for any character under **Movement**.
 
 ### Make your own
 
@@ -152,7 +153,7 @@ The benchmark runs one creature with the app's frame-loop rates and window-list 
 
 How to keep it light:
 
-- **Use layers.** Build characters from Core Animation layers and change their properties (transform, position, opacity, a shape layer's path) instead of drawing. The window server moves, turns, fades and fills layers on the GPU. See `makeLayeredBody`, `SparkleBody`, `CookieBody` and `GhostBody`.
+- **Use layers.** Build characters from Core Animation layers and change their properties (transform, position, opacity, a shape layer's path) instead of drawing. The window server moves, turns, fades and fills layers on the GPU. See `makeLayeredBody`, `SparkleBody`, `CookieBody`, `GhostBody` and `SpinnerBody`.
 - **Repaint only what changed.** A `PaintedLayer` should repaint only when what it shows has changed (see how `GooglyCharacterView` keys the eyes and mouth). Parts that only move shouldn't be repainted at all: the pupils that follow the cursor are layers moving over a picture of the eyes. Parts that rarely change can be pictures (`showPicture`).
 - **No blurs in drawing code.** `CGContext.setShadow` blurs on the CPU every time something is drawn, which was the biggest cost before. Use a layer shadow with a `shadowPath`, or `bodyGlow` for a drawn body.
 - **Don't move windows every frame.** The creature moves inside a stage window that only follows now and then. Bubbles are only placed again when what they point at moves.

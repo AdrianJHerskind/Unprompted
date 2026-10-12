@@ -10,7 +10,7 @@ protocol LayeredBody: AnyObject {
     func update(state: CreatureState, palette: GooglyCharacterView.Palette, t: CGFloat)
 }
 
-/// The shared look of the code-drawn characters (Sparkle, Ghost, Cookie Banner):
+/// The shared look of the code-drawn characters (Sparkle, Ghost, Cookie Banner, Loading Spinner):
 /// googly eyes that follow the cursor, a mouth and blush for every mood, poses (hop, squash,
 /// lean), twinkles, sleepy Z's, hats and props. Subclasses build their own body from layers in
 /// `makeLayeredBody` (or draw it in `drawBody`) and can change colors and where the hat and props go.
@@ -129,6 +129,14 @@ class GooglyCharacterView: CharacterView {
     /// The twinkles' color, read when their pictures are made (not for every update).
     var twinkleColor: CGColor { CGColor(srgbRed: 1, green: 0.93, blue: 0.6, alpha: 1) }
 
+    /// Whether twinkles circle the body.
+    var hasTwinkles: Bool { true }
+
+    /// Whether rolling turns the face, hat and prop along with the body. False when the body shows
+    /// the roll by itself, like a wheel turning around an upright face: the body then reads `spin`
+    /// while `spinIsRoll`. Waddling rocks the face either way.
+    var faceRollsAlong: Bool { true }
+
     // MARK: - Updating
 
     override func advance(by dt: TimeInterval) {
@@ -153,7 +161,7 @@ class GooglyCharacterView: CharacterView {
         let toBody = CGAffineTransform(translationX: bounds.midX, y: baseY + pose.dy)
             .scaledBy(x: pose.sx, y: pose.sy)
             .translatedBy(x: 0, y: R)
-            .rotated(by: pose.rotation + spin)
+            .rotated(by: pose.rotation + (spinIsRoll && !faceRollsAlong ? 0 : spin))
         poseLayer.setAffineTransform(toBody)
 
         if let layeredBody {
@@ -511,7 +519,7 @@ class GooglyCharacterView: CharacterView {
     // MARK: - Extras
 
     private func updateTwinkles(center: CGPoint, R: CGFloat, t: CGFloat) {
-        let visible = state != .sleep && state != .sulk
+        let visible = hasTwinkles && state != .sleep && state != .sulk
         for (i, twinkle) in twinkleLayers.enumerated() {
             twinkle.isHidden = !visible
             guard visible else { continue }

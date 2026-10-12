@@ -14,6 +14,8 @@ class CharacterView: NSView {
     var facingRight = true { didSet { if facingRight != oldValue { needsDisplay = true } } }
     /// Extra rotation in radians (counterclockwise) around the body's middle, for rolling and waddling.
     var spin: CGFloat = 0
+    /// Whether `spin` rolls it like a wheel rather than rocking it (waddling).
+    var spinIsRoll = false
     /// Whole-character rotation in degrees (counterclockwise) around the middle of the view, for
     /// climbing sideways and spinning into the trash.
     var turn: CGFloat = 0 { didSet { if turn != oldValue { needsDisplay = true } } }

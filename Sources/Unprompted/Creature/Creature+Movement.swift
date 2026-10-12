@@ -210,7 +210,9 @@ extension Creature {
         case .roll where !isAttached && !isDragging:
             if abs(dx) > 0.01 {
                 rollAngle -= dx / (pack.size.width * scale * 0.36)
-            } else if grounded {
+            } else if grounded && (walkDirection == 0 || !canWalk) {
+                // Not while it's walking: turning around, or setting off around the screens,
+                // holds it still for a frame.
                 rollAngle = atan2(sin(rollAngle), cos(rollAngle)) // nearest way back upright
                 rollAngle -= rollAngle * min(1, dt * 6)
             }
