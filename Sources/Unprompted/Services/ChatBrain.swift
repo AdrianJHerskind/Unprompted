@@ -424,6 +424,11 @@ enum ChatBrain {
                 "Studies show yes. I made the studies.",
                 "Great question! The answer is in the cloud. Somewhere.",
                 "I don't know, but I'll say it with confidence: no.",
+                "Short answer: yes. Long answer: yeeeeees.",
+                "I ran the numbers. The numbers ran away.",
+                "Let me think… … … I'll go with “absolutely”.",
+                "That's above my pay grade. My pay grade is zero.",
+                "The answer is clearly B. I'm not sure what A was.",
             ].randomElement()!, think: true)
         }
         return ChatReply(text: [
@@ -434,6 +439,10 @@ enum ChatBrain {
             "Fascinating! I've added that to my training data. 📝",
             "Hmm. I'm going to need a bigger model for that one.",
             "Type “help” to see what I can actually do. 😉",
+            "Noted! I've filed that under “important”. Everything's under “important”.",
+            "Wow. Say that again, but slower.",
+            "I hear you. I don't understand you, but I hear you. 👂",
+            "Very interesting. Shall I turn it into a podcast?",
         ].randomElement()!)
     }
 
@@ -461,6 +470,11 @@ enum ChatBrain {
         "A SQL query walks into a bar, walks up to two tables and asks: “Can I join you?”",
         "Why was the computer cold? It left its Windows open. 🪟",
         "I'm reading a book about anti-gravity. It's impossible to put down. (Unlike me. Please don't put me down.)",
+        "Why did the developer go broke? They used up all their cache. 💸",
+        "How many AIs does it take to change a light bulb? One, plus a 2,000-word essay about it.",
+        "I'd tell you a joke about UDP, but you might not get it.",
+        "Why did the function break up with the loop? It felt like they were going in circles.",
+        "Why do cows wear bells? Because their horns don't work. 🐄",
     ]
 
     private static let eightBall = [
@@ -472,6 +486,10 @@ enum ChatBrain {
         "Without a doubt. Well, some doubt.",
         "Outlook hazy. Try turning me off and on again.",
         "It is certain. Trust the sparkle. ✨",
+        "Yes, but only on Tuesdays.",
+        "The answer is in your heart. Or in your cache. Try clearing both.",
+        "Definitely maybe. 🎱",
+        "Reply hazy. Please rephrase as a meeting invite.",
     ]
 
     private static let units: [String: Dimension] = {

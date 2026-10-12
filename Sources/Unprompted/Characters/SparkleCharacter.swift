@@ -17,6 +17,9 @@ final class SparklePack: CharacterPack {
         "Every app has me now. I'm basically a celebrity. ✨",
         "Click the sparkle! Click the sparkle! Click the sparkle!",
         "My gradient was designed by a committee of 40 people.",
+        "I'm on every button now. Undo? Me. Save? Also me. ✨",
+        "Put me on any button and it's suddenly a Pro feature. ✨",
+        "Sparkle up your workflow! (Nobody knows what that means. Not even me.)",
     ]
 
     func makeView() -> CharacterView {

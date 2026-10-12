@@ -17,6 +17,8 @@ final class GhostPack: CharacterPack {
         "Ooooo… you have unread emails… ooooo…",
         "I'm not dead. I'm just deprecated.",
         "I float because walking is so 2010.",
+        "I'm the spirit of cancelled features. There are so many of us… ooooo…",
+        "I haunt your Downloads folder. Nobody ever goes in there. 👻",
     ]
     let chatReplies = [
         "Ooooo… the answer is… ooooo… unclear… 👻",

@@ -18,6 +18,9 @@ final class CookieBannerPack: CharacterPack {
         "Manage preferences → Legitimate interest → Are you sure? → Are you SURE?",
         "I'm GDPR compliant. Mostly. Somewhat. In spirit.",
         "Your choices have been saved. (They have not.)",
+        "This message will reappear every time you visit. Forever. 🍪",
+        "Essential cookies only? Bold. I respect a rebel.",
+        "Your consent is very important to us. Your opinion, slightly less.",
     ]
     let chatReplies = [
         "Before I answer, please accept 47 cookies. 🍪",

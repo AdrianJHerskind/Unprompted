@@ -21,6 +21,8 @@ final class SpinnerPack: CharacterPack {
         "I'm not stuck. I'm thinking in circles. It's a reasoning technique.",
         "Don't refresh! You'd lose all the waiting you've already done.",
         "A watched spinner never loads. ⏳",
+        "Hang on, I'm buffering my personality. ⏳",
+        "Please wait… This assistant is very popular right now.",
     ]
     let chatReplies = [
         "Reasoning for 3 minutes… The answer is: it depends. ⏳",
