@@ -37,6 +37,7 @@ extension Assistant {
 
     private func fill(_ line: String) -> String {
         var s = line.replacingOccurrences(of: "{name}", with: creature.pack.name)
+        if lines.isDismissed(line) { s += "\n(Your preference has been saved. ✅)" }
         if s.contains("{time}") {
             s = s.replacingOccurrences(of: "{time}", with: Self.timeFormatter.string(from: Date()))
         }
@@ -133,13 +134,11 @@ extension Assistant {
         default:
             changeMood(by: -1)
             say("Preference saved! ✅ I won't show that again.", force: true)
-            // The classic: it shows it once more anyway… and *then* actually stops.
+            // The classic: it shows it again anyway, and keeps doing so (with a note, see `fill`).
+            lines.dismiss(line)
             after(.random(in: 35...60)) { [weak self] in
-                guard let self else { return }
-                self.lines.mute(line)
-                guard self.canTalk else { return }
-                self.bubble.say(self.fill(line) + "\n(Your preference has been saved. ✅)", think: false,
-                                near: self.creature.bodyFrame, buttons: ["OK"]) { _ in }
+                guard let self, self.canTalk else { return }
+                self.bubble.say(self.fill(line), think: false, near: self.creature.bodyFrame, buttons: ["OK"]) { _ in }
             }
         }
     }

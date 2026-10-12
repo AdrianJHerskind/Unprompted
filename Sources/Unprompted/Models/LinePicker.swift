@@ -1,17 +1,17 @@
 import Foundation
 
-/// Chooses what to say: avoids repeating recent lines and skips lines muted with "Don't show again".
+/// Chooses what to say, avoiding lines said recently. Lines you asked not to see again are still
+/// said, just like the original Clippy, but they come back with a little note (see `isDismissed`).
 struct LinePicker {
     private var recent: [String] = []
-    private var muted = Set(UserDefaults.standard.stringArray(forKey: Self.mutedKey) ?? [])
-    private static let mutedKey = "mutedLines"
+    private var dismissed = Set(UserDefaults.standard.stringArray(forKey: Self.dismissedKey) ?? [])
+    /// Kept under the key of an earlier version, so lines dismissed back then get the note too.
+    private static let dismissedKey = "mutedLines"
 
     /// A random line that hasn't been said recently.
     func pick(_ lines: [String]) -> String {
-        let allowed = lines.filter { !muted.contains($0) }
-        let pool = allowed.isEmpty ? lines : allowed
-        let fresh = pool.filter { !recent.contains($0) }
-        return (fresh.isEmpty ? pool : fresh).randomElement() ?? "✨"
+        let fresh = lines.filter { !recent.contains($0) }
+        return (fresh.isEmpty ? lines : fresh).randomElement() ?? "✨"
     }
 
     mutating func remember(_ line: String) {
@@ -19,8 +19,13 @@ struct LinePicker {
         if recent.count > 25 { recent.removeFirst() }
     }
 
-    mutating func mute(_ line: String) {
-        muted.insert(line)
-        UserDefaults.standard.set(Array(muted), forKey: Self.mutedKey)
+    /// "Don't show again": saved with great care, and then ignored.
+    mutating func dismiss(_ line: String) {
+        dismissed.insert(line)
+        UserDefaults.standard.set(Array(dismissed), forKey: Self.dismissedKey)
+    }
+
+    func isDismissed(_ line: String) -> Bool {
+        dismissed.contains(line)
     }
 }

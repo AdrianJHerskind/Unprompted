@@ -28,7 +28,7 @@ It's a parody of AI assistants, with a few genuinely useful tricks. It runs enti
 - **"AI" file summaries**: drop a file on it for a summary that's really just honest stats with a punchline. Text, code, PDFs, Word and RTF documents, images, video and audio, folders, apps, or several files at once.
 - **Daily report**: a fake-AI report built from real numbers: active time, keystroke count (never which keys), time per app, app switches and how you treated it. It offers to show it in the evening.
 - **Sticky notes**: now and then it leaves a note on your screen. Click to crumple it.
-- **Context-aware heckling**: it reacts to the app you switch to, the time of day, long typing sessions and low battery. Its answers stream in word by word, sometimes after a fake "Reasoning…" pause, and some questions come with Clippy's **[Yes] [No] [Don't show again]** buttons. "Don't show again" works. Eventually.
+- **Context-aware heckling**: it reacts to the app you switch to, the time of day, long typing sessions and low battery. Its answers stream in word by word, sometimes after a fake "Reasoning…" pause, and some questions come with Clippy's **[Yes] [No] [Don't show again]** buttons. "Don't show again" is saved, confirmed with a ✅, and then cheerfully ignored, just like the original.
 
 ### It (mostly) knows when to stop
 
