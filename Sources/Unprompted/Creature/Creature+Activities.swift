@@ -1,5 +1,19 @@
 import AppKit
 
+/// How much the creature wanders around on its own (the Wandering setting). However little, it
+/// still breathes, blinks and looks around, and comes along when you play with it or call it.
+enum Wandering: String, CaseIterable {
+    case still, sometimes, often
+
+    var title: String {
+        switch self {
+        case .still: return "Stays put"
+        case .sometimes: return "Now and then"
+        case .often: return "A lot"
+        }
+    }
+}
+
 /// What the creature gets up to on its own: wandering, fetch, chasing the cursor, climbing and
 /// hanging from windows, peeking from the screen edge, and being deleted.
 extension Creature {
@@ -44,6 +58,16 @@ extension Creature {
                 }
             }
 
+        case .retreat(let targetX, let inward, let until):
+            let dx = targetX - centerX
+            if abs(dx) < max(8, arrivalTolerance) || now > until {
+                endActivity()
+                facingRight = inward > 0
+            } else {
+                walkDirection = dx > 0 ? 1 : -1
+                speedMultiplier = 1.3
+            }
+
         case .approachClimb(let id, let leftEdge, let side, let until):
             guard now < until, let f = world.frame(ofWindow: id) else { return endActivity() }
             let wallX = leftEdge ? f.minX : f.maxX
@@ -74,33 +98,83 @@ extension Creature {
         return hopLength * 0.6 + 4
     }
 
-    /// Random wandering: stroll, stand around, jump, or start something more fun.
+    /// Random wandering: stroll, stand around, jump, or start something more fun, as often as
+    /// `wandering` allows.
     private func decideWhatToDo(centerX: CGFloat, feetY: CGFloat) {
         guard now >= behaviorUntil else { return }
         speedMultiplier = 1
+        guard wandering != .still else {
+            if headsForCorner {
+                headsForCorner = false
+                if startRetreat(centerX: centerX) { return }
+            }
+            walkDirection = 0
+            behaviorUntil = now + 2
+            return
+        }
+        // Now and then: about a third of the outings, shorter strolls and longer rests.
+        let calm = wandering == .sometimes
+        let outings = calm ? 0.35 : 1
         var roll = Double.random(in: 0..<1)
 
-        let chaseChance = 0.08 * playfulness
+        let chaseChance = 0.08 * playfulness * outings
         if roll < chaseChance { return startChase() }
         roll -= chaseChance
-        if roll < 0.07, startClimbApproach(centerX: centerX, feetY: feetY) { return }
-        roll -= 0.07
-        if roll < 0.04, startPeek(centerX: centerX, feetY: feetY) { return }
-        roll -= 0.04
-        if roll < 0.06 {
+        if roll < 0.07 * outings, startClimbApproach(centerX: centerX, feetY: feetY) { return }
+        roll -= 0.07 * outings
+        if roll < 0.04 * outings, startPeek(centerX: centerX, feetY: feetY) { return }
+        roll -= 0.04 * outings
+        if roll < 0.06 * outings {
             let dir: CGFloat = walkDirection != 0 ? walkDirection : (Bool.random() ? 1 : -1)
             leap(dx: dir * .random(in: 80...220), dy: .random(in: 600...1100))
             behaviorUntil = now + 1
             return
         }
-        roll -= 0.06
-        if roll < 0.42 {
+        roll -= 0.06 * outings
+        if roll < (calm ? 0.2 : 0.42) {
             walkDirection = Bool.random() ? 1 : -1
-            behaviorUntil = now + .random(in: 1.5...5)
+            behaviorUntil = now + (calm ? .random(in: 1...3) : .random(in: 1.5...5))
         } else {
             walkDirection = 0
-            behaviorUntil = now + .random(in: 2...6)
+            behaviorUntil = now + (calm ? .random(in: 5...12) : .random(in: 2...6))
         }
+    }
+
+    /// Told to wander less (or more): it stops what it set off to do on its own. Climbing,
+    /// hanging, playing and fetching finish by themselves.
+    func settleDown() {
+        if wandering != .still { headsForCorner = false }
+        switch activity {
+        case .wander:
+            walkDirection = 0
+            behaviorUntil = now
+        case .approachClimb:
+            endActivity()
+        case .retreat where wandering != .still:
+            endActivity()
+        case .peek(let phase, let edgeX, let dir, _) where phase != .returning:
+            activity = .peek(phase: .returning, edgeX: edgeX, dir: dir, until: now + 10)
+        default:
+            break
+        }
+    }
+
+    /// Heads for a bottom corner of its screen, out of the way: the nearest one, but not one where
+    /// the screen meets another screen (that's the middle of your desktop).
+    private func startRetreat(centerX: CGFloat) -> Bool {
+        guard let screen = world.screen(at: CGPoint(x: centerX, y: center.y)) ?? NSScreen.nearest(to: center) else { return false }
+        let visible = world.visibleFrame(of: screen)
+        let inset = size.width / 2 + 10
+        let corners: [(x: CGFloat, inward: CGFloat)] = [(visible.minX + inset, 1), (visible.maxX - inset, -1)]
+        let outer = corners.filter { corner in
+            let beyond = corner.inward > 0 ? screen.frame.minX - 20 : screen.frame.maxX + 20
+            return !world.isOnScreen(CGPoint(x: beyond, y: visible.minY + 10))
+        }
+        guard let pick = (outer.isEmpty ? corners : outer).min(by: { abs($0.x - centerX) < abs($1.x - centerX) }) else {
+            return false
+        }
+        activity = .retreat(targetX: pick.x, inward: pick.inward, until: now + 30)
+        return true
     }
 
     // MARK: Climbing and hanging

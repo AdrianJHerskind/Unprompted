@@ -150,6 +150,8 @@ extension Assistant {
         landingGraceUntil = Date() + 4
         let x = screen.visibleFrame.midX + .random(in: -200...200)
         creature.drop(at: CGPoint(x: x, y: screen.visibleFrame.maxY - creature.size.height))
+        // Staying put, it lands in the middle and then gets out of your way.
+        creature.headsForCorner = settings.wandering == .still
     }
 
     /// "Come Here": drops in right by the cursor.
@@ -157,6 +159,7 @@ extension Assistant {
         let m = NSEvent.mouseLocation
         landingGraceUntil = Date() + 4
         creature.drop(at: CGPoint(x: m.x, y: m.y + 20))
+        creature.headsForCorner = false // you called it here
         comeForward()
         noteInteraction()
         creature.stopSulking()

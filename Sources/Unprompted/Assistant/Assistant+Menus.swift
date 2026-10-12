@@ -58,6 +58,7 @@ extension Assistant {
         menu.addSubmenu("Character", characterMenu())
         menu.addSubmenu("Annoyance Level", annoyanceMenu())
         menu.addSubmenu("Movement", movementMenu())
+        menu.addSubmenu("Wandering", wanderingMenu())
         menu.addSubmenu("Costume", costumeMenu())
         let dockTrash = menu.addAction("Use Real Dock Trash") { [weak self] in self?.settings.useDockTrash.toggle() }
         // Mixed: switched on, but it can't find the Trash without Accessibility permission.
@@ -123,6 +124,14 @@ extension Assistant {
         menu.addItem(.separator())
         for style in MovementStyle.allCases {
             menu.addAction(style.title, checked: current == style) { [weak self] in self?.settings.movement = style.rawValue }
+        }
+        return menu
+    }
+
+    private func wanderingMenu() -> NSMenu {
+        let menu = NSMenu()
+        for level in Wandering.allCases {
+            menu.addAction(level.title, checked: level == settings.wandering) { [weak self] in self?.settings.wandering = level }
         }
         return menu
     }

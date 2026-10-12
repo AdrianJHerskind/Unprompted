@@ -31,6 +31,7 @@ final class AppSettings: ObservableObject {
     @Published var size: Double { didSet { defaults.set(size, forKey: "size") } }
     /// 0.5…2, 1 = normal.
     @Published var speed: Double { didSet { defaults.set(speed, forKey: "speed") } }
+    @Published var wandering: Wandering { didSet { defaults.set(wandering.rawValue, forKey: "wandering") } }
 
     @Published var unpromptedRemarks: Bool { didSet { defaults.set(unpromptedRemarks, forKey: "unpromptedRemarks") } }
     @Published var appRemarks: Bool { didSet { defaults.set(appRemarks, forKey: "appRemarks") } }
@@ -59,6 +60,7 @@ final class AppSettings: ObservableObject {
         movement = d.string(forKey: "movement") ?? ""
         size = d.object(forKey: "size") as? Double ?? 1
         speed = d.object(forKey: "speed") as? Double ?? 1
+        wandering = Wandering(rawValue: d.string(forKey: "wandering") ?? "") ?? .often
         unpromptedRemarks = bool("unpromptedRemarks", true)
         appRemarks = bool("appRemarks", true)
         typingRemarks = bool("typingRemarks", true)

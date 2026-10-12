@@ -65,7 +65,7 @@ final class Assistant: NSObject {
     private var frameInterval: TimeInterval = 0
     private var settingsObserver: AnyCancellable?
     /// The settings that only matter when they change.
-    private var applied: (annoyance: Annoyance, stickyNotes: Bool, useDockTrash: Bool)
+    private var applied: (annoyance: Annoyance, stickyNotes: Bool, useDockTrash: Bool, wandering: Wandering)
     let ownPID = ProcessInfo.processInfo.processIdentifier
     private static let debugLogging = ProcessInfo.processInfo.environment["UNPROMPTED_DEBUG"] != nil
 
@@ -76,7 +76,7 @@ final class Assistant: NSObject {
         self.world = world
         let pack = packs.first { $0.id == settings.characterID } ?? packs[0]
         creature = Creature(pack: pack, world: world, scale: CGFloat(settings.size))
-        applied = (settings.annoyance, settings.stickyNotes, settings.useDockTrash)
+        applied = (settings.annoyance, settings.stickyNotes, settings.useDockTrash, settings.wandering)
         super.init()
         creature.playfulness = mood.playfulness
         applySettings()
@@ -304,7 +304,12 @@ final class Assistant: NSObject {
         if creature.pack.id != settings.characterID, let pack = packs.first(where: { $0.id == settings.characterID }) {
             switchTo(pack)
         }
-        for c in allCreatures { c.movementOverride = settings.movementOverride }
+        for c in allCreatures {
+            c.movementOverride = settings.movementOverride
+            c.wandering = settings.wandering
+        }
+        // Told to stay put, it first gets out of your way.
+        if settings.wandering == .still && applied.wandering != .still { creature.headsForCorner = true }
         creature.setScale(CGFloat(settings.size))
         for intern in interns { intern.creature.setScale(CGFloat(settings.size) * Intern.scale) }
         notes.playsSound = settings.sounds
@@ -315,7 +320,7 @@ final class Assistant: NSObject {
         if !settings.stickyNotes && applied.stickyNotes { notes.removeAll() }
         if !settings.interns { removeAllInterns() }
         if settings.useDockTrash != applied.useDockTrash { dockTrashChanged() }
-        applied = (settings.annoyance, settings.stickyNotes, settings.useDockTrash)
+        applied = (settings.annoyance, settings.stickyNotes, settings.useDockTrash, settings.wandering)
     }
 
     /// Slower with a nightcap late at night, coffee in the morning, seasonal costumes.

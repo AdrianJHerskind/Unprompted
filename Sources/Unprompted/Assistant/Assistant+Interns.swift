@@ -29,6 +29,7 @@ extension Assistant {
         ignoredSeconds = 0
         let mini = Creature(pack: creature.pack, world: world, scale: CGFloat(settings.size) * Intern.scale)
         mini.movementOverride = settings.movementOverride
+        mini.wandering = settings.wandering
         mini.playfulness = 0.8
         mini.onEvent = { [weak self, weak mini] event in
             guard let self, let mini else { return }

@@ -28,6 +28,9 @@ struct SettingsView: View {
                     Divider()
                     ForEach(MovementStyle.allCases, id: \.self) { Text($0.title).tag($0.rawValue) }
                 }
+                Picker("Wandering", selection: $settings.wandering) {
+                    ForEach(Wandering.allCases, id: \.self) { Text($0.title).tag($0) }
+                }
                 Picker("Costume", selection: $settings.costume) {
                     Text("Seasonal").tag("auto")
                     Text("None").tag("none")

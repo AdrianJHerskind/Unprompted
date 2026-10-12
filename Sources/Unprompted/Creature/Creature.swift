@@ -40,6 +40,8 @@ final class Creature {
         /// Dangling from a window's top corner. `dir` is the direction it walked off in.
         case hang(windowID: Int, dir: CGFloat, until: TimeInterval)
         case peek(phase: PeekPhase, edgeX: CGFloat, dir: CGFloat, until: TimeInterval)
+        /// Getting out of the way, to a corner at `targetX`, then turning to face `inward`.
+        case retreat(targetX: CGFloat, inward: CGFloat, until: TimeInterval)
         /// Climbing the step up to a higher neighboring screen, at boundary `x`, up to `top`.
         case stepClimb(x: CGFloat, top: CGFloat, side: CGFloat)
         /// Walking out of the outermost screen edge (exiting) and back in on the far side (entering).
@@ -72,6 +74,11 @@ final class Creature {
     var isTalking = false
     /// 0…1, from the assistant's mood. Happier creatures play more.
     var playfulness: Double = 0.5
+    /// How much it wanders around on its own (the Wandering setting).
+    var wandering = Wandering.often { didSet { if wandering != oldValue { settleDown() } } }
+    /// While it stays put: get out of the way, to a corner of the screen, as soon as it can. Set by
+    /// the assistant; picking it up or playing with it leaves it where that ends.
+    var headsForCorner = false
     var costume: Costume? { didSet { view.costume = costume } }
     var prop: Prop? { didSet { view.prop = prop } }
     /// Replaces the character's own gait (chosen in the menu).
@@ -355,6 +362,7 @@ final class Creature {
         sleepingUntil = nil
         activity = .chase(until: now + duration)
         behaviorUntil = now
+        headsForCorner = false
     }
 
     /// Animates into the trash (spinning, shrinking), then hides and reports `.died`.
@@ -579,6 +587,7 @@ final class Creature {
         guard hypot(m.x - mouseDownPoint.x, m.y - mouseDownPoint.y) > 4 else { return }
         isDragging = true
         hopping = false
+        headsForCorner = false
         activity = .wander
         grounded = false
         groundWindow = nil
@@ -642,6 +651,7 @@ final class Creature {
         case .stepClimb: return "Climbing up to the next screen"
         case .hang: return "Hanging on for dear life"
         case .peek: return "Peeking from the edge"
+        case .retreat: return "Getting out of your way"
         case .wrap: return "Taking a shortcut around the screens"
         case .approachClimb: return "Heading for a window to climb"
         case .chase: return "Chasing your cursor"
