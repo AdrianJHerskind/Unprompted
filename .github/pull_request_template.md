@@ -10,8 +10,8 @@
 ## CPU use
 
 <!-- If this touches characters, animation, the creature or its windows, paste the output of
-     tools/cpu-benchmark.sh --compare main into the block below (see "Checking CPU use" in the
-     README). Otherwise, delete this section. -->
+     tools/cpu-benchmark.sh --compare main into the block below (see "Checking CPU use" in
+     CONTRIBUTING.md). Otherwise, delete this section. -->
 
 ```text
 

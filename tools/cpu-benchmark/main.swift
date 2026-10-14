@@ -3,7 +3,7 @@ import AppKit
 // Measures what one creature costs: hosts a real Creature (its window, physics and layers) on a
 // frame loop like the app's, holds it in one pose and reports the CPU used by this process, the
 // window server and the window manager. tools/cpu-benchmark.sh builds it together with the app's
-// sources and runs it for every character (see "Checking CPU use" in the README).
+// sources and runs it for every character (see "Checking CPU use" in CONTRIBUTING.md).
 //
 //   cpu-benchmark --character <id> --mode <mode> --seconds <n> [--screen <index>] [--accessories]
 //                 [--moving-cursor]

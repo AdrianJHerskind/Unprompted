@@ -4,6 +4,7 @@ Clippy for the AI age: a small, overly helpful assistant that lives on your Mac'
 It wanders around, walks on top of your windows, sits on the Dock, and offers "help" nobody asked for.
 
 It's a parody of AI assistants, with a few genuinely useful tricks. It runs entirely on your Mac: no AI model, no network, no account.
+It's also light on your battery: about 1–3% of one CPU core while it sits around and 4–11% while it walks (measured on an M3 Pro), and its animation stops while your screen is off or locked.
 
 ![Sparkle drops onto a window, climbs down and sneaks behind it; Ghost fakes some reasoning, gets thrown in the Trash and comes right back](docs/demo.gif)
 
@@ -41,7 +42,7 @@ It's a parody of AI assistants, with a few genuinely useful tricks. It runs enti
 
 ## Getting started
 
-Unprompted needs macOS 13 Ventura or later, on an Apple Silicon or Intel Mac. Once it runs, look for the ✨ in the menu bar; there's no Dock icon. Turn on **Launch at Login** in the ✨ menu to keep it around.
+Unprompted needs macOS 13 Ventura or later, on an Apple silicon or Intel Mac. It's developed and tested on macOS 26 on Apple silicon; older macOS versions and Intel Macs should work but haven't been tested yet, so reports are welcome. Once it runs, look for the ✨ in the menu bar; there's no Dock icon. Turn on **Launch at Login** in the ✨ menu to keep it around.
 
 ### Download
 
@@ -58,9 +59,11 @@ The app isn't notarized by Apple (that takes a yearly developer fee), so macOS b
 
 You need the Swift 5.9 toolchain or newer (Xcode 15 or later, or the Command Line Tools: `xcode-select --install`).
 
-Clone the repository, then in its folder:
+Clone the repository and build it:
 
 ```bash
+git clone https://github.com/AdrianJHerskind/Unprompted.git
+cd Unprompted
 ./build.sh
 ```
 
@@ -68,19 +71,26 @@ This builds the app, installs it in `/Applications` and starts it.
 
 - `./build.sh --no-install` only builds `build/Unprompted.app`.
 - `./build.sh debug` makes a debug build.
-- `./build.sh --universal` builds for both Apple Silicon and Intel.
+- `./build.sh --universal` builds for both Apple silicon and Intel.
 - `swift run` also works from the project folder while developing.
+
+### Uninstall
+
+1. If you turned on **Launch at Login**, turn it off in the ✨ menu.
+2. Choose **Quit** in the ✨ menu, then move **Unprompted** from Applications to the Trash.
+3. To remove its settings and daily statistics as well, run `defaults delete io.github.adrianjherskind.unprompted` in Terminal. If you added your own characters, also delete `~/Library/Application Support/Unprompted`.
+4. If you used **Use Real Dock Trash**, remove Unprompted from **System Settings → Privacy & Security → Accessibility**.
 
 ## Privacy
 
 It's meant to be annoying, not creepy:
 
-- It needs no permissions. Window *positions* are readable without Screen Recording access; it never reads window contents or titles.
-- It counts key presses for the daily report, but never sees which keys.
-- To notice calls in any app, it asks macOS whether some app is using the microphone. It never uses the microphone itself or hears anything.
-- It reads the clipboard only when you pick a rewrite, and files only when you hand them over.
-- Nothing leaves your Mac. It makes no network requests; links and searches you ask for open in your browser.
-- Its settings and seven days of daily statistics are stored locally in its preferences.
+- **It needs no permissions.** It asks macOS for the list of windows and uses only their positions and which app they belong to, which needs no permission. Titles and contents would need Screen Recording access, which it never asks for.
+- **It counts key presses for the daily report, but never sees which keys.** It reads macOS's system-wide key-press counter, a single number. It doesn't install a keyboard monitor.
+- **To notice calls in any app, it asks macOS whether some app is using the microphone.** Core Audio answers with yes or no per app. It never opens the microphone itself or hears anything.
+- **It reads the clipboard only when you pick a rewrite, and files only when you hand them over.**
+- **Nothing leaves your Mac.** There's no networking code in the app at all; links and searches you ask for open in your browser.
+- **Its settings and seven days of daily statistics are stored locally** in its preferences (see [Uninstall](#uninstall)).
 - The optional **Use Real Dock Trash** needs Accessibility permission, only to find the Trash icon in the Dock.
 
 ## Characters
@@ -124,94 +134,11 @@ Create a folder with PNG frames (transparent background) and a `character.json`:
 Only `idle` is required. The other states are `walk`, `fall`, `drag`, `talk`, `sulk`, `sleep` and `happy`; missing ones reuse `idle`.
 `hat` and `hand` (optional, in source pixels from the top-left) say where hats sit and where held props like the morning coffee go.
 `movement` is `walk`, `waddle`, `hop`, `roll` or `float`, and `bounciness` goes from 0 (a sack of potatoes) to 0.9.
-Then choose **Reload Characters**. `Resources/Characters/mrbyte/` is a complete example.
-
-For a look made in code, implement `CharacterPack` and a `CharacterView` subclass and add it to `CharacterLibrary.loadAll()`. The view builds the character from Core Animation layers in its `contentLayer` and brings them up to date in `updateContent()`, including `spin`, the hat and the prop (`turn` is taken care of). Subclass `GooglyCharacterView` instead to get the googly face, poses and extras of the built-in characters: it only needs a body, built from layers in `makeLayeredBody` or, more simply but at a higher cost, drawn in `drawBody` for every update.
-
-To keep a code-drawn character only on your Mac, put it in `Sources/Unprompted/Characters/Local/`, which git ignores, and hand it over through a `LocalCharacters` class there (see `LocalCharacterSource` in `CharacterLibrary.swift`).
+Then choose **Reload Characters**. `Resources/Characters/mrbyte/` is a complete example. To draw a character in code instead, see [CONTRIBUTING.md](CONTRIBUTING.md#characters-drawn-in-code).
 
 ## Contributing
 
-Contributions are welcome: new characters, quips, chat skills, rewrite styles, file types to summarize, bug fixes and performance work. For bigger changes, please open an issue first so we can agree on the idea before you put in the work.
-
-### Working on it
-
-- `swift build` is the quickest check that everything compiles. `./build.sh` installs and restarts the app so you can try your change.
-- The ✨ menu shows a **Status** line (napping, sulking, climbing…). For more detail, run `UNPROMPTED_DEBUG=1 build/Unprompted.app/Contents/MacOS/Unprompted`, which prints the creature's internal state every second.
-- Builds are signed ad hoc, so macOS forgets the Accessibility permission (only used by **Use Real Dock Trash**) after each rebuild. Remove the app from System Settings → Privacy & Security → Accessibility and allow it again.
-- The app icon and the pixel-art characters are generated by the scripts in `tools/`, for example `swift tools/generate-icon.swift Resources`.
-
-### Guidelines
-
-- **Keep the privacy promise** above: no network requests, nothing read in the background, and no new permissions without discussing it in an issue first.
-- **Builds without warnings.** UI code runs on the main actor; the creature and its windows are only touched from there.
-- **Put code where it belongs** (see the code map below) and follow the style of the code around it. Comments explain *why*, and only where that's not obvious.
-- **Keep it light.** It runs all day next to your real work, so it has to stay cheap. Check what your change costs before you open a pull request (see [Checking CPU use](#checking-cpu-use)).
-- **Only original art**, or art you have the rights to share. No trademarked logos or characters, please.
-- **Friendly humor.** It teases AI hype, productivity culture and itself; it's never mean about people.
-
-### Checking CPU use
-
-Unprompted runs all day next to your real work, so it costs only a few percent of one core, and should stay that way. If your change touches characters, animation, the creature or its windows, compare it with where you started before you open a pull request:
-
-```bash
-tools/cpu-benchmark.sh --compare main
-```
-
-This builds your checkout (uncommitted changes included) and the commit on `main` your work started from. It runs a real creature for every character, standing, walking, talking (with a speech bubble) and asleep, alternating between the two builds, and prints what each costs. Quit Unprompted first and leave the Mac alone while it runs, about 10 minutes; it keeps the display awake. Don't lock or cover the screen either: a creature nobody can see stops drawing, so those runs fail. Paste the table into your pull request. Characters your change adds show up as `new`.
-
-To look at one thing more closely, use something like `tools/cpu-benchmark.sh --compare main -c ghost -m walk -r 3`. Add `-a` to wear a hat and a coffee. The cursor stays in a corner of the screen while it runs, so eyes that follow it hold still; add `-M` to have it circle the creature instead (300 pt away, once every 4 seconds), as a cursor does in real use, and see what following it costs. `--help` lists all options. If your work is committed on `main` itself, compare with `origin/main` instead, or `upstream/main` in a fork.
-
-The table has four columns:
-
-- **App CPU**: the creature itself, in % of one core. On Apple silicon, macOS moves work between fast and efficient cores, so the same code can show twice the CPU from one run to the next.
-- **App instr. M/s**: the instructions the creature ran, in millions a second. They don't depend on which cores did the work, so compare builds by these first.
-- **WindowManager**: macOS's work for our windows. Activity Monitor doesn't count it as Unprompted's, but it's real: moving a window every frame costs about a third of a core here.
-- **WindowServer**: the window server's extra work. It moves around a lot, so only trust big differences there.
-
-WindowManager and WindowServer are shown above their idle level.
-
-The benchmark runs one creature with the app's frame-loop rates and window-list rules. It doesn't run the rest of the app: the chat box, effects, interns, reminders and the other timers. For changes there, profile the real app (see the last tip below).
-
-How to keep it light:
-
-- **Use layers.** Build characters from Core Animation layers and change their properties (transform, position, opacity, a shape layer's path) instead of drawing. The window server moves, turns, fades and fills layers on the GPU. See `makeLayeredBody`, `SparkleBody`, `CookieBody`, `GhostBody` and `SpinnerBody`.
-- **Repaint only what changed.** A `PaintedLayer` should repaint only when what it shows has changed (see how `GooglyCharacterView` keys the eyes and mouth). Parts that only move shouldn't be repainted at all: the pupils that follow the cursor are layers moving over a picture of the eyes. Parts that rarely change can be pictures (`showPicture`).
-- **No blurs in drawing code.** `CGContext.setShadow` blurs on the CPU every time something is drawn, which was the biggest cost before. Use a layer shadow with a `shadowPath`, or `bodyGlow` for a drawn body.
-- **Don't move windows every frame.** The creature moves inside a stage window that only follows now and then. Bubbles are only placed again when what they point at moves.
-- **Calm poses can update less often** (`Creature.updateInterval(for:)`). Anything that moves updates every frame: motion has to stay smooth at 60 fps.
-- **Don't ask macOS the same thing every frame.** Use `World`'s cached screens, visible frames and window list (`World.refreshIfNeeded(now:for:)` decides how fresh it needs to be).
-- **Drawing text is expensive.** Draw it once into a picture where you can, as the Cookie Banner's card does.
-- **Stop work nobody can see.** The frame loop stops while the screens are off or locked, and slows to 10 Hz while the creature dozes. New timers should do the same.
-- **Profile to see where the time goes:** `/usr/bin/sample <pid> 10` (the `sample` on your PATH may be a Python package), or Instruments' Time Profiler.
-
-### Pull requests
-
-- One topic per pull request, please.
-- Describe what you changed and how you tested it. There's no automated test suite yet, so say what you tried by hand (and on how many screens, if it's about movement).
-- If it touches characters, animation, the creature or its windows, include the output of `tools/cpu-benchmark.sh --compare main`.
-- For anything visible, a screenshot or short screen recording helps a lot.
-
-### Reporting bugs
-
-Open an issue with your macOS version, your display setup (how many screens, and which is the main one), what you did, what happened, and what you expected. For movement bugs, the `UNPROMPTED_DEBUG=1` output from around that moment is very helpful.
-
-## Code map
-
-Everything is in `Sources/Unprompted/`:
-
-| Folder | What's in it |
-|---|---|
-| `App/` | Entry point, app delegate and the menu bar icon |
-| `Assistant/` | The brain: when to talk and what to say. `Assistant.swift` has the update loops, presence (snoozing, quiet mode) and settings; the `Assistant+…` files have talking, reactions to events, actions, interns and the menus |
-| `Creature/` | The body: its window (a stage the character moves around in) and frame update (`Creature.swift`), walking, falling and multiple screens (`+Movement`), climbing, hanging, peeking and the other activities (`+Activities`), petting, shaking and throwing (`Gestures.swift`), and `World.swift`: what it can stand on |
-| `Characters/` | The looks: `CharacterPack` and `CharacterView`, the shared googly face (`GooglyCharacterView.swift`), the drawn characters, sprite characters, and hats and props (`Accessories.swift`) |
-| `Models/` | Settings, mood, daily stats and report insights, annoyance levels, and everything it says (`Quips.swift`) |
-| `Services/` | The chat brain and calculator, text rewrites, file summaries, reminders, the clipboard, quiet-mode detection, whether anyone can see the screens, the Dock's Trash and system info |
-| `Views/` | The overlay windows, speech bubble, chat box, sticky notes, effects and trash can, and the SwiftUI Settings and Daily Report windows |
-| `Support/` | Small helpers: colors, screen geometry, shapes, layers and word matching |
-
-Sprite characters live in `Resources/Characters/`. `tools/` has the scripts that generate the icon and pixel art, the CPU benchmark and the release packaging (`make-release.sh`).
+Contributions are welcome: new characters, quips, chat skills, rewrite styles, file types to summarize, bug fixes and performance work. [CONTRIBUTING.md](CONTRIBUTING.md) explains how to work on it, the guidelines, how to check CPU use, how to report bugs and where everything is in the code.
 
 ## Supporting Unprompted
 

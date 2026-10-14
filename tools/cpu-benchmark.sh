@@ -1,6 +1,6 @@
 #!/bin/bash
 # Measures how much CPU each character costs while it stands, walks, talks and sleeps, so a change
-# can be compared with main before it goes into a pull request (see "Checking CPU use" in the README).
+# can be compared with main before it goes into a pull request (see "Checking CPU use" in CONTRIBUTING.md).
 #
 #   tools/cpu-benchmark.sh [options]
 #     --compare <git ref>    also measure where your work started from <ref> (e.g. main), side by side
