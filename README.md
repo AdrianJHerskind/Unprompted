@@ -39,7 +39,22 @@ It's a parody of AI assistants, with a few genuinely useful tricks. It runs enti
 
 ## Getting started
 
-You need macOS 13 Ventura or later and the Swift 5.9 toolchain or newer (Xcode 15 or later, or the Command Line Tools: `xcode-select --install`).
+Unprompted needs macOS 13 Ventura or later, on an Apple Silicon or Intel Mac. Once it runs, look for the ✨ in the menu bar; there's no Dock icon. Turn on **Launch at Login** in the ✨ menu to keep it around.
+
+### Download
+
+1. Download the zip from the [latest release](https://github.com/AdrianJHerskind/Unprompted/releases/latest) and unzip it.
+2. Move **Unprompted** to your Applications folder, then open it.
+
+The app isn't notarized by Apple (that takes a yearly developer fee), so macOS blocks it the first time you open it:
+
+1. Close the warning that macOS can't check the app.
+2. Open **System Settings → Privacy & Security**, scroll down and click **Open Anyway** next to Unprompted.
+3. Confirm with **Open**. From then on, it opens normally.
+
+### Build it yourself
+
+You need the Swift 5.9 toolchain or newer (Xcode 15 or later, or the Command Line Tools: `xcode-select --install`).
 
 Clone the repository, then in its folder:
 
@@ -47,10 +62,11 @@ Clone the repository, then in its folder:
 ./build.sh
 ```
 
-This builds the app, installs it in `/Applications` and starts it. Look for the ✨ in the menu bar; there's no Dock icon. Turn on **Launch at Login** in the ✨ menu to keep it around.
+This builds the app, installs it in `/Applications` and starts it.
 
 - `./build.sh --no-install` only builds `build/Unprompted.app`.
 - `./build.sh debug` makes a debug build.
+- `./build.sh --universal` builds for both Apple Silicon and Intel.
 - `swift run` also works from the project folder while developing.
 
 ## Privacy
@@ -193,7 +209,11 @@ Everything is in `Sources/Unprompted/`:
 | `Views/` | The overlay windows, speech bubble, chat box, sticky notes, effects and trash can, and the SwiftUI Settings and Daily Report windows |
 | `Support/` | Small helpers: colors, screen geometry, shapes, layers and word matching |
 
-Sprite characters live in `Resources/Characters/`. `tools/` has the scripts that generate the icon and pixel art, and the CPU benchmark.
+Sprite characters live in `Resources/Characters/`. `tools/` has the scripts that generate the icon and pixel art, the CPU benchmark and the release packaging (`make-release.sh`).
+
+## Supporting Unprompted
+
+If Unprompted made you smile, you can [sponsor it on GitHub](https://github.com/sponsors/AdrianJHerskind), monthly or once. It's completely optional, and unlike "Don't show again", that one is meant seriously.
 
 ## License
 

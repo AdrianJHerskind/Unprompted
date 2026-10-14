@@ -4,21 +4,24 @@
 #   ./build.sh                 release build, install, restart
 #   ./build.sh debug           debug build, install, restart
 #   ./build.sh --no-install    only build into build/
+#   ./build.sh --universal     build for Apple Silicon and Intel
 set -euo pipefail
 cd "$(dirname "$0")"
 
 CONFIG=release
 INSTALL=1
+ARCHS=()
 for arg in "$@"; do
     case "$arg" in
         debug|release) CONFIG="$arg" ;;
         --no-install) INSTALL=0 ;;
-        *) echo "Usage: $0 [debug|release] [--no-install]" >&2; exit 1 ;;
+        --universal) ARCHS=(--arch arm64 --arch x86_64) ;;
+        *) echo "Usage: $0 [debug|release] [--no-install] [--universal]" >&2; exit 1 ;;
     esac
 done
 
-swift build -c "$CONFIG"
-BIN="$(swift build -c "$CONFIG" --show-bin-path)/Unprompted"
+swift build -c "$CONFIG" ${ARCHS[@]+"${ARCHS[@]}"}
+BIN="$(swift build -c "$CONFIG" ${ARCHS[@]+"${ARCHS[@]}"} --show-bin-path)/Unprompted"
 
 APP=build/Unprompted.app
 rm -rf "$APP"
