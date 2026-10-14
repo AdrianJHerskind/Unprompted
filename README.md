@@ -26,12 +26,19 @@ It's also light on your battery: about 1–3% of one CPU core while it sits arou
 
 ### It "helps"
 
+<img src="docs/report.png" align="right" width="300" alt="The daily report: active time, keystrokes, app switches, time per app, the relationship stats and a few AI Insights such as 'You switched apps 214 times. Focus is a myth anyway.'">
+
 - **Ask Me Anything**: a chat box next to the creature. It's an ELIZA-style pattern matcher with real skills: math, unit conversion, definitions from the macOS dictionary, the time (also in other cities), reminders and timers, opening apps and websites, web search, coins, dice and jokes. Anything else gets a confidently wrong answer. Type `help` for the list.
 - **Rewrite Clipboard**: copy text anywhere, pick a style, paste the result. More Engaging, LinkedIn, Corporate, Pirate and Mocking, plus useful ones: UPPERCASE, lowercase, Title Case and Clean Up Spacing. Undo restores the original.
 - **"AI" file summaries**: drop a file on it for a summary that's really just honest stats with a punchline. Text, code, PDFs, Word and RTF documents, images, video and audio, folders, apps, or several files at once.
 - **Daily report**: a fake-AI report built from real numbers: active time, keystroke count (never which keys), time per app, app switches and how you treated it. It offers to show it in the evening.
 - **Sticky notes**: now and then it leaves a note on your screen. Click to crumple it.
 - **Context-aware heckling**: it reacts to the app you switch to, the time of day, long typing sessions and low battery. Its answers stream in word by word, sometimes after a fake "Reasoning…" pause, and some questions come with Clippy's **[Yes] [No] [Don't show again]** buttons. "Don't show again" is saved, confirmed with a ✅, and then cheerfully ignored, just like the original.
+
+<p>
+  <img src="docs/chat.png" width="59%" alt="Sparkle with the chat box open, answering: 15% of 80 is 12. I used 4 GPUs for that.">
+  <img src="docs/rewrite.png" width="33%" alt="The Rubber Duck after a pirate rewrite: Arr, I'll be a few minutes late to th' parley. Yo-ho-ho!">
+</p>
 
 ### It (mostly) knows when to stop
 
