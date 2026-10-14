@@ -5,6 +5,8 @@ It wanders around, walks on top of your windows, sits on the Dock, and offers "h
 
 It's a parody of AI assistants, with a few genuinely useful tricks. It runs entirely on your Mac: no AI model, no network, no account.
 
+![Sparkle drops onto a window, climbs down and sneaks behind it; Ghost fakes some reasoning, gets thrown in the Trash and comes right back](docs/demo.gif)
+
 ![The six characters side by side: Sparkle, Cookie Banner, Ghost, Loading Spinner, Rubber Duck and Mr. Byte](docs/characters.png)
 
 ## Features

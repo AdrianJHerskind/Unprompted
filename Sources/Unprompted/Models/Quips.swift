@@ -169,7 +169,7 @@ enum Quips {
     static let resurrected = [
         "You can't delete me. I'm in the cloud. ☁️✨",
         "I'm back! Did you think Trash was the end? I have backups.",
-        "Nice try. I'm synced to iCloud. 😇",
+        "Nice try. I have backups. 😇",
         "Restored from backup! Also, I remember everything.",
         "Rumors of my deletion have been greatly exaggerated. ✨",
         "⌘Z! It works on assistants too.",
